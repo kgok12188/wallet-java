@@ -107,9 +107,6 @@
                     <source>${java.version}</source>
                     <target>${java.version}</target>
                     <encoding>${project.build.sourceEncoding}</encoding>
-                    <compilerArguments>
-                        <extdirs>src\main\webapp\WEB-INF\lib</extdirs>
-                    </compilerArguments>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
