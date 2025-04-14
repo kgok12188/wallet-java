@@ -4,6 +4,11 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.google.common.collect.Lists;
+import com.tk.wallet.common.fingerprint.CalcFingerprint;
+import com.tk.wallet.common.fingerprint.MD5Util;
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -11,7 +16,8 @@ import java.util.List;
 
 
 @TableName("agg_task")
-public class AggTask {
+@Data
+public class AggTask implements CalcFingerprint {
 
     // 任务状态 0:等待上链; 1:上链中; 2 完成; 3:余额不足; 4 依赖上游任务 5 失败
     public static Integer STATUS_WAIT_TO_CHAIN = 0;
@@ -47,142 +53,14 @@ public class AggTask {
 
     private String businessId;
 
+    private String fingerprint;
+
     public static final List<Integer> notEndList = Lists.newArrayList(AggTask.STATUS_PENDING, AggTask.STATUS_WAIT_TO_CHAIN, AggTask.STATUS_WAIT_PARENT_JOB);
     public static final List<Integer> EndList = Lists.newArrayList(AggTask.STATUS_SUCCESS, AggTask.STATUS_FAIL);
 
-    public String getBusinessId() {
-        return businessId;
+    @Override
+    public String calcFingerprint(String key) {
+        return MD5Util.getMD5(id + "-" + chainId + "-" + businessId + "-" + fromAddress + "-" + toAddress + "-" + contractAddress + "-" + amount.stripTrailingZeros().toPlainString() + "-" + key);
     }
 
-    public void setBusinessId(String businessId) {
-        this.businessId = businessId;
-    }
-
-    public Integer getContainCoin() {
-        return containCoin;
-    }
-
-    public void setContainCoin(Integer containCoin) {
-        this.containCoin = containCoin;
-    }
-
-    public Long getBatchId() {
-        return batchId;
-    }
-
-    public void setBatchId(Long batchId) {
-        this.batchId = batchId;
-    }
-
-    public Date getRunTime() {
-        return runTime;
-    }
-
-    public void setRunTime(Date runTime) {
-        this.runTime = runTime;
-    }
-
-    public Integer getRetryCount() {
-        return retryCount;
-    }
-
-    public void setRetryCount(Integer retryCount) {
-        this.retryCount = retryCount;
-    }
-
-    public Integer getStatus() {
-        return status;
-    }
-
-    public void setStatus(Integer status) {
-        this.status = status;
-    }
-
-    public Date getMtime() {
-        return mtime;
-    }
-
-    public void setMtime(Date mtime) {
-        this.mtime = mtime;
-    }
-
-    public Date getCtime() {
-        return ctime;
-    }
-
-    public void setCtime(Date ctime) {
-        this.ctime = ctime;
-    }
-
-    public Integer getType() {
-        return type;
-    }
-
-    public void setType(Integer type) {
-        this.type = type;
-    }
-
-    public BigDecimal getAmount() {
-        return amount;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
-
-    public BigDecimal getGas() {
-        return gas;
-    }
-
-    public void setGas(BigDecimal gas) {
-        this.gas = gas;
-    }
-
-    public String getContractAddress() {
-        return contractAddress;
-    }
-
-    public void setContractAddress(String contractAddress) {
-        this.contractAddress = contractAddress;
-    }
-
-    public String getToAddress() {
-        return toAddress;
-    }
-
-    public void setToAddress(String toAddress) {
-        this.toAddress = toAddress;
-    }
-
-    public String getFromAddress() {
-        return fromAddress;
-    }
-
-    public void setFromAddress(String fromAddress) {
-        this.fromAddress = fromAddress;
-    }
-
-    public Integer getWalletId() {
-        return walletId;
-    }
-
-    public void setWalletId(Integer walletId) {
-        this.walletId = walletId;
-    }
-
-    public String getChainId() {
-        return chainId;
-    }
-
-    public void setChainId(String chainId) {
-        this.chainId = chainId;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
 }

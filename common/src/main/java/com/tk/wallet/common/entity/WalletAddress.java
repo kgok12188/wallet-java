@@ -2,6 +2,10 @@ package com.tk.wallet.common.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.tk.wallet.common.fingerprint.CalcFingerprint;
+import com.tk.wallet.common.fingerprint.MD5Util;
+import lombok.Data;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -14,7 +18,9 @@ import java.util.Date;
  * @author ${author}
  * @since 2022-09-29
  */
-public class WalletAddress implements Serializable {
+@Data
+@TableName("wallet_address")
+public class WalletAddress implements Serializable, CalcFingerprint {
 
     private static final long serialVersionUID = 1L;
     @TableId(value = "id", type = IdType.AUTO)
@@ -30,59 +36,11 @@ public class WalletAddress implements Serializable {
     //(value = "更新时间")
     private Date mtime;
 
-    public Integer getId() {
-        return id;
+    private String fingerprint;
+
+    @Override
+    public String calcFingerprint(String key) {
+        return MD5Util.getMD5(id + "-" + walletId + "-" + baseSymbol + "-" + address + "-" + key);
     }
 
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public Integer getWalletId() {
-        return walletId;
-    }
-
-    public void setWalletId(Integer walletId) {
-        this.walletId = walletId;
-    }
-
-    public String getBaseSymbol() {
-        return baseSymbol;
-    }
-
-    public void setBaseSymbol(String baseSymbol) {
-        this.baseSymbol = baseSymbol;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
-    public Integer getUseStatus() {
-        return useStatus;
-    }
-
-    public void setUseStatus(Integer useStatus) {
-        this.useStatus = useStatus;
-    }
-
-    public Date getCtime() {
-        return ctime;
-    }
-
-    public void setCtime(Date ctime) {
-        this.ctime = ctime;
-    }
-
-    public Date getMtime() {
-        return mtime;
-    }
-
-    public void setMtime(Date mtime) {
-        this.mtime = mtime;
-    }
 }

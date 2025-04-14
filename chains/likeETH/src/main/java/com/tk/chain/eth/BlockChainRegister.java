@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
 
+/**
+ * 动作加载链
+ */
 @Service
 public class BlockChainRegister implements ApplicationContextAware {
 

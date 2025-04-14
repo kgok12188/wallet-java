@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.tk.wallet.common.fingerprint.CalcFingerprint;
 import com.tk.wallet.common.fingerprint.MD5Util;
+import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -16,6 +17,7 @@ import java.util.Objects;
  * </p>
  */
 @TableName("wallet_symbol_config")
+@Data
 public class WalletSymbolConfig implements CalcFingerprint {
 
     private static final long serialVersionUID = 1L;
@@ -72,7 +74,7 @@ public class WalletSymbolConfig implements CalcFingerprint {
 
     @Override
     public String calcFingerprint(String key) {
-        return MD5Util.getMD5(coldAddress + "-" + walletId + "-" + symbolConfigId + "-" + aggAddress + "-" + energyAddress);
+        return MD5Util.getMD5(coldAddress + "-" + walletId + "-" + symbolConfigId + "-" + aggAddress + "-" + energyAddress + "-" + key);
     }
 
     @Override
@@ -83,128 +85,6 @@ public class WalletSymbolConfig implements CalcFingerprint {
     @Override
     public void setFingerprint(String fingerprint) {
         this.fingerprint = fingerprint;
-    }
-
-
-    public Integer getId() {
-        return id;
-    }
-
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public Integer getWalletId() {
-        return walletId;
-    }
-
-    public void setWalletId(Integer walletId) {
-        this.walletId = walletId;
-    }
-
-    public Integer getSymbolConfigId() {
-        return symbolConfigId;
-    }
-
-    public void setSymbolConfigId(Integer symbolConfigId) {
-        this.symbolConfigId = symbolConfigId;
-    }
-
-
-    public String getAggAddress() {
-        return aggAddress;
-    }
-
-    public void setAggAddress(String aggAddress) {
-        this.aggAddress = aggAddress;
-    }
-
-    public String getEnergyAddress() {
-        return energyAddress;
-    }
-
-    public void setEnergyAddress(String energyAddress) {
-        this.energyAddress = energyAddress;
-    }
-
-    public String getConfigJson() {
-        return configJson;
-    }
-
-    public void setConfigJson(String configJson) {
-        this.configJson = configJson;
-    }
-
-    public Integer getCheckPolice() {
-        return checkPolice;
-    }
-
-    public void setCheckPolice(Integer checkPolice) {
-        this.checkPolice = checkPolice;
-    }
-
-    public Integer getStatus() {
-        return status;
-    }
-
-    public void setStatus(Integer status) {
-        this.status = status;
-    }
-
-    public Integer getAggPolice() {
-        return aggPolice;
-    }
-
-    public void setAggPolice(Integer aggPolice) {
-        this.aggPolice = aggPolice;
-    }
-
-    public BigDecimal getAggMinAmount() {
-        return aggMinAmount;
-    }
-
-    public void setAggMinAmount(BigDecimal aggMinAmount) {
-        this.aggMinAmount = aggMinAmount;
-    }
-
-    public BigDecimal getToColdThreshold() {
-        return toColdThreshold;
-    }
-
-    public void setToColdThreshold(BigDecimal toColdThreshold) {
-        this.toColdThreshold = toColdThreshold;
-    }
-
-    public BigDecimal getToColdMinAmount() {
-        return toColdMinAmount;
-    }
-
-    public void setToColdMinAmount(BigDecimal toColdMinAmount) {
-        this.toColdMinAmount = toColdMinAmount;
-    }
-
-    public String getColdAddress() {
-        return coldAddress;
-    }
-
-    public void setColdAddress(String coldAddress) {
-        this.coldAddress = coldAddress;
-    }
-
-    public Date getCtime() {
-        return ctime;
-    }
-
-    public void setCtime(Date ctime) {
-        this.ctime = ctime;
-    }
-
-    public Date getMtime() {
-        return mtime;
-    }
-
-    public void setMtime(Date mtime) {
-        this.mtime = mtime;
     }
 
     public boolean autoUpChain() {

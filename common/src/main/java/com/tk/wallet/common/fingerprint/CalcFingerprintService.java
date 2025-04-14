@@ -1,10 +1,21 @@
 package com.tk.wallet.common.fingerprint;
 
+import com.alibaba.fastjson.JSONObject;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
+import javax.crypto.Cipher;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,54 +26,61 @@ public class CalcFingerprintService {
 
     public static final Map<String, String> keyMap = new ConcurrentHashMap<>();
 
-    public static final String PUBLIC_KEY_PREFIX = "public_key_prefix_";
-    // public static final String COMMON_ENCRYPT_BASE_URL = "common_encrypt_base_url";
-    public static final String GET_PUB_KEY_URL = "/key/pub_key"; //get请求
-    public static final String ENCRYPT_URL = "/core/encrypt"; //post请求
+    public static final String PUBLIC_KEY_URL = "/fingerprint/getPublicKey"; //get请求
+    public static final String DECRYPT_URL = "/fingerprint/decrypt"; //post请求
 
-    @Value("${stats_withdraw_finger_print_key:ad7dNBma}")
-    private String stats_withdraw_finger_print_key;
+    @Value("${fingerprint.salt:ad7dNBma}")
+    private String salt;
 
-    @Value("${common_encrypt_base_url:http://ex.host:8328}")
+    @Value("${fingerprint.url:http://127.0.0.1:5678}")
     private String encryptUrl;
 
-    public String calcFingerprint(CalcFingerprint calcFingerprint) {
-        String originStr = calcFingerprint.calcFingerprint(stats_withdraw_finger_print_key);
-        return encrypt(originStr);
-    }
-
-    public void updateFingerprint(CalcFingerprint calcFingerprint) {
-        String originStr = calcFingerprint.calcFingerprint(stats_withdraw_finger_print_key);
-        calcFingerprint.setFingerprint(encrypt(originStr));
+    public void calcFingerprint(CalcFingerprint calcFingerprint) {
+        String originStr = calcFingerprint.calcFingerprint(salt);
+        String fingerprint = encrypt(originStr);
+        calcFingerprint.setFingerprint(fingerprint);
     }
 
     /*
      * 指纹校验
      * */
     public boolean matchFingerprint(CalcFingerprint calcFingerprint) {
-        return matchFingerprint(calcFingerprint, null);
-    }
-
-    /*
-     * 指纹校验
-     * */
-    public boolean matchFingerprint(CalcFingerprint calcFingerprint, String message) {
-        return true;
+        String originStr = calcFingerprint.calcFingerprint(salt);
+        RestTemplate restTemplate = new RestTemplate();
+        HashMap<String, Object> params = new HashMap<>();
+        params.put("value", calcFingerprint.getFingerprint());
+        ResponseEntity<JSONObject> response = restTemplate.postForEntity(encryptUrl + DECRYPT_URL, params, JSONObject.class);
+        if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+            return false;
+        }
+        return StringUtils.equals(originStr, response.getBody().getString("value"));
     }
 
     /**
      * 加密
      */
     private String encrypt(String fingerprint) {
-        return fingerprint;
+        String publicKeyStr = getPublicKey();
+        try {
+            Cipher cipher = Cipher.getInstance("RSA");
+            byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyStr.trim());
+            PublicKey publicKey = KeyFactory.getInstance("RSA")
+                    .generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+            byte[] encryptedBytes = cipher.doFinal(fingerprint.getBytes());
+            return Base64.getEncoder().encodeToString(encryptedBytes);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("指纹加密失败：" + fingerprint);
+        }
     }
 
-    public String encrypt(int type, int source, String hash) {
-        return hash;
-    }
-
-    public String getPublicKey(int type, int source) {
-        return "";
+    private String getPublicKey() {
+        RestTemplate restTemplate = new RestTemplate();
+        ResponseEntity<JSONObject> response = restTemplate.postForEntity(encryptUrl + PUBLIC_KEY_URL, new HashMap<>(), JSONObject.class);
+        if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+            return "";
+        }
+        return response.getBody().containsKey("value") ? response.getBody().getString("value") : "";
     }
 
 }

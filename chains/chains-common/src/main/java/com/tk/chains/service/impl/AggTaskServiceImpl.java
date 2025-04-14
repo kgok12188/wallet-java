@@ -72,8 +72,8 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
     /**
      * 归集入口
      *
-     * @param walletId
-     * @param chainId
+     * @param walletId      钱包商户id
+     * @param chainId       链
      * @param gasAddress    燃料地址, 假设燃料地址可以支付足够的地址，确认gas 会导致归集暂停
      * @param targetAddress 归集目标地址
      * @param inContracts   需要归集的合约 , 主币的合约是 "" 空字符串

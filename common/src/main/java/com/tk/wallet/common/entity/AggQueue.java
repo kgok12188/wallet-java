@@ -2,8 +2,9 @@ package com.tk.wallet.common.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import lombok.Getter;
+import lombok.Setter;
 
-import java.util.Date;
 import java.util.Objects;
 
 /*
@@ -21,6 +22,8 @@ CREATE TABLE `agg_queue` (
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=latin1;
 *
 * */
+@Setter
+@Getter
 public class AggQueue {
 
     @TableId(type = IdType.AUTO)
@@ -35,51 +38,4 @@ public class AggQueue {
         return Objects.equals(status, 1);
     }
 
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getChainId() {
-        return chainId;
-    }
-
-    public void setChainId(String chainId) {
-        this.chainId = chainId;
-    }
-
-    public Integer getWalletId() {
-        return walletId;
-    }
-
-    public void setWalletId(Integer walletId) {
-        this.walletId = walletId;
-    }
-
-    public Integer getStatus() {
-        return status;
-    }
-
-    public void setStatus(Integer status) {
-        this.status = status;
-    }
-
-    public Date getCtime() {
-        return ctime;
-    }
-
-    public void setCtime(Date ctime) {
-        this.ctime = ctime;
-    }
-
-    public String getSymbolList() {
-        return symbolList;
-    }
-
-    public void setSymbolList(String symbolList) {
-        this.symbolList = symbolList;
-    }
 }

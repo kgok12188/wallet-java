@@ -1,0 +1,8 @@
+server:
+  port: 5678
+
+
+logging:
+  level:
+    root: info
+    #com.baomidou.example.mapper: debug

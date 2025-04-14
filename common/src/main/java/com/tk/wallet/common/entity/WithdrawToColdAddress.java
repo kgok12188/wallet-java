@@ -3,6 +3,11 @@ package com.tk.wallet.common.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.tk.wallet.common.fingerprint.CalcFingerprint;
+import com.tk.wallet.common.fingerprint.MD5Util;
+import lombok.Getter;
+import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -27,15 +32,18 @@ CREATE TABLE `withdraw_to_cold_address` (
 ) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=latin1;
 *
 * */
+@Setter
+@Getter
 @TableName("withdraw_to_cold_address")
-public class WithdrawToColdAddress {
+
+public class WithdrawToColdAddress implements CalcFingerprint {
     @TableId(value = "id", type = IdType.AUTO)
     private Integer id;
     private Integer walletId;
     private String chain;// 链
     private String fromAddress; // from地址
     private String toAddress;// to地址
-    private String contractAddress; // 合约地址
+    private String contractAddress = ""; // 合约地址
     private BigDecimal amount; // 金额
     private Integer status; // 0 初始化, 1 进行中 2 完成 3 失败
     private String businessId;// 业务id
@@ -44,107 +52,11 @@ public class WithdrawToColdAddress {
     private Date ctime;
     private Date mtime;
 
-    public Integer getId() {
-        return id;
+    @Override
+    public String calcFingerprint(String key) {
+        return MD5Util.getMD5(id + "-" + walletId + "-" + chain + "-" + fromAddress + "-" + toAddress + "-" +
+                (StringUtils.isBlank(contractAddress) ? "" : contractAddress)
+                + "-" + amount.stripTrailingZeros().toPlainString() + "-" + key);
     }
 
-    public void setId(Integer id) {
-        this.id = id;
-    }
-
-    public Integer getWalletId() {
-        return walletId;
-    }
-
-    public void setWalletId(Integer walletId) {
-        this.walletId = walletId;
-    }
-
-    public String getChain() {
-        return chain;
-    }
-
-    public void setChain(String chain) {
-        this.chain = chain;
-    }
-
-    public String getFromAddress() {
-        return fromAddress;
-    }
-
-    public void setFromAddress(String fromAddress) {
-        this.fromAddress = fromAddress;
-    }
-
-    public String getToAddress() {
-        return toAddress;
-    }
-
-    public void setToAddress(String toAddress) {
-        this.toAddress = toAddress;
-    }
-
-    public String getContractAddress() {
-        return contractAddress;
-    }
-
-    public void setContractAddress(String contractAddress) {
-        this.contractAddress = contractAddress;
-    }
-
-    public BigDecimal getAmount() {
-        return amount;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
-
-    public Integer getStatus() {
-        return status;
-    }
-
-    public void setStatus(Integer status) {
-        this.status = status;
-    }
-
-    public String getBusinessId() {
-        return businessId;
-    }
-
-    public void setBusinessId(String businessId) {
-        this.businessId = businessId;
-    }
-
-    public String getHash() {
-        return hash;
-    }
-
-    public void setHash(String hash) {
-        this.hash = hash;
-    }
-
-    public String getFingerprint() {
-        return fingerprint;
-    }
-
-    public void setFingerprint(String fingerprint) {
-        this.fingerprint = fingerprint;
-    }
-
-    public Date getCtime() {
-        return ctime;
-    }
-
-    public void setCtime(Date ctime) {
-        this.ctime = ctime;
-    }
-
-    public Date getMtime() {
-        return mtime;
-    }
-
-    public void setMtime(Date mtime) {
-        this.mtime = mtime;
-    }
 }

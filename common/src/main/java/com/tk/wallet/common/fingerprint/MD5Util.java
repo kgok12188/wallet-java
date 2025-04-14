@@ -10,7 +10,7 @@ public class MD5Util {
      * @param info 字符串
      * @return 该字符串的MD5值
      */
-    public static String getMD5(String info) {
+    public synchronized static String getMD5(String info) {
         try {
             //获取 MessageDigest 对象，参数为 MD5 字符串，表示这是一个 MD5 算法（其他还有 SHA1 算法等）：
             MessageDigest md5 = MessageDigest.getInstance("MD5");
@@ -30,7 +30,7 @@ public class MD5Util {
     private static String bytesToHex(byte[] md5Array) {
         StringBuilder strBuilder = new StringBuilder();
         for (int i = 0; i < md5Array.length; i++) {
-            int temp = 0xff & md5Array[i];//TODO:此处为什么添加 0xff & ？
+            int temp = 0xff & md5Array[i];
             String hexString = Integer.toHexString(temp);
             if (hexString.length() == 1) {//如果是十六进制的0f，默认只显示f，此时要补上0
                 strBuilder.append("0").append(hexString);

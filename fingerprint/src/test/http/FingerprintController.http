@@ -1,0 +1,24 @@
+### POST request to example server
+POST http://localhost:5678/fingerprint/getPublicKey
+Content-Type: application/json
+
+{
+
+}
+
+### 加密
+POST http://localhost:5678/fingerprint/encrypt
+Content-Type: application/json
+
+{
+    "value": "test"
+}
+
+
+### 解密
+POST http://localhost:5678/fingerprint/decrypt
+Content-Type: application/json
+
+{
+  "value": "ppVAmjp7eTAxUGViSAOhcMd4W8HBHJsAxZ84nRKKya09OSslqS6ocWaHXV3o8aYDi1e0IlktyZEGOrrGFJAEMU0IDt9MjyqbchHBF6Pt8Lj/LbF6bCAn9q4/C1ISBagMB0N55vcYzCiksg9woWazNoLOwQwn+3sVqkjgv6WhqtKnKM98VhjuDl+HSYLktR0SJ8giFDDbeIc1lEUxtb+LXEi/u+PcE2mqIaLUOkDLuJaa+awrEuKN6K6BnY7pw2e+FveMq0911nG+G/ORk1MGXMSzrwxP0tfz2C7eHkr8GU4HqHJqaaqNXFR+UROrB+zW6UOqu9e3p/9kZiIt1vgPmg=="
+}

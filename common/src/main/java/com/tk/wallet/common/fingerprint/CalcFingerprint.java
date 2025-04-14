@@ -8,4 +8,5 @@ public interface CalcFingerprint extends Serializable {
     String getFingerprint();
 
     void setFingerprint(String fingerprint);
+
 }

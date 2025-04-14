@@ -20,6 +20,7 @@
         <module>chains</module>
         <module>admin-api</module>
         <module>proxy-api</module>
+        <module>fingerprint</module>
     </modules>
 
     <properties>
