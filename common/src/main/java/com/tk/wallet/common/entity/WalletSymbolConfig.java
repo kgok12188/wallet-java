@@ -2,6 +2,7 @@ package com.tk.wallet.common.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.tk.wallet.common.fingerprint.CalcFingerprint;
 import com.tk.wallet.common.fingerprint.MD5Util;
 
@@ -11,12 +12,10 @@ import java.util.Objects;
 
 /**
  * <p>
- * 币种配置表
+ * 商户币种配置表
  * </p>
- *
- * @author ${author}
- * @since 2022-10-08
  */
+@TableName("wallet_symbol_config")
 public class WalletSymbolConfig implements CalcFingerprint {
 
     private static final long serialVersionUID = 1L;
@@ -30,23 +29,10 @@ public class WalletSymbolConfig implements CalcFingerprint {
     //(value = "全局配置id")
     private Integer symbolConfigId;
 
-    //(value = "主链")
-    private String baseSymbol;
-
-    //(value = "apiName  TUSDT,EUSDT")
-    private String symbol;
-
-    //(value = "链上的币种名称")
-    private String tokenSymbol;
-
-    //(value = "合约地址：主币没有")
-    private String contractAddress;
 
     //(value = "归集地址，归集到该地址")
     private String aggAddress;
 
-    //(value = "归集地址公钥")
-    private String aggAddressPublicKey;
 
     //(value = "能量地址，从该地址发出能量")
     private String energyAddress;
@@ -124,37 +110,6 @@ public class WalletSymbolConfig implements CalcFingerprint {
         this.symbolConfigId = symbolConfigId;
     }
 
-    public String getBaseSymbol() {
-        return baseSymbol;
-    }
-
-    public void setBaseSymbol(String baseSymbol) {
-        this.baseSymbol = baseSymbol;
-    }
-
-    public String getSymbol() {
-        return symbol;
-    }
-
-    public void setSymbol(String symbol) {
-        this.symbol = symbol;
-    }
-
-    public String getTokenSymbol() {
-        return tokenSymbol;
-    }
-
-    public void setTokenSymbol(String tokenSymbol) {
-        this.tokenSymbol = tokenSymbol;
-    }
-
-    public String getContractAddress() {
-        return contractAddress;
-    }
-
-    public void setContractAddress(String contractAddress) {
-        this.contractAddress = contractAddress;
-    }
 
     public String getAggAddress() {
         return aggAddress;
@@ -162,14 +117,6 @@ public class WalletSymbolConfig implements CalcFingerprint {
 
     public void setAggAddress(String aggAddress) {
         this.aggAddress = aggAddress;
-    }
-
-    public String getAggAddressPublicKey() {
-        return aggAddressPublicKey;
-    }
-
-    public void setAggAddressPublicKey(String aggAddressPublicKey) {
-        this.aggAddressPublicKey = aggAddressPublicKey;
     }
 
     public String getEnergyAddress() {

@@ -7,6 +7,7 @@ import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.WalletAddress;
 import com.tk.wallet.common.entity.WalletSymbolConfig;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,22 +38,41 @@ public class AddressService {
     private SymbolConfigService symbolConfigService;
     @Resource
     private WalletWithdrawService walletWithdrawService;
+    @Autowired
+    private ChainScanConfigService chainScanConfigService;
 
 
     public String getAndSaveAddress(Integer walletId, String chainId, ChainScanConfig chainScanConfig) {
+        if (chainScanConfig == null) {
+            return "";
+        }
         String addressUrl = chainScanConfig.getAddressUrl();
+        if (StringUtils.isBlank(addressUrl) && StringUtils.isNotBlank(chainScanConfig.getAddressSymbol())) {
+            ChainScanConfig addressChainScanConfig = chainScanConfigService.getByChainId(chainScanConfig.getAddressSymbol());
+            if (addressChainScanConfig != null) {
+                addressUrl = addressChainScanConfig.getAddressUrl();
+            }
+        }
+        if (StringUtils.isBlank(addressUrl)) {
+            return "";
+        }
+
         RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<JSONObject> ret = restTemplate.postForEntity(addressUrl, new HashMap<>(), JSONObject.class);
-        if (ret.getStatusCode().is2xxSuccessful() && ret.getBody() != null) {
-            String address = ret.getBody().getString("address");
-            this.save(address, walletId, chainId);
-            return address;
+        try {
+            ResponseEntity<JSONObject> ret = restTemplate.postForEntity(addressUrl, new HashMap<>(), JSONObject.class);
+            if (ret.getStatusCode().is2xxSuccessful() && ret.getBody() != null) {
+                String address = ret.getBody().getString("address");
+                this.save(address, walletId, chainId);
+                return address;
+            }
+        } catch (Exception e) {
+            logger.error("get_address_error {} {}", chainId, addressUrl, e);
         }
         return "";
     }
 
     /**
-     * @param address
+     * @param address    地址
      * @param walletUser 商户uid
      * @param baseSymbol 链id
      */
@@ -79,22 +99,26 @@ public class AddressService {
         return CollectionUtils.isNotEmpty(walletAddresses);
     }
 
-    /**
-     * 类似 btc 模型 找零
-     *
-     * @param chainId
-     * @param fromAddress
-     * @return
-     */
-    public String getChangeAddress(String chainId, String fromAddress) {
-        Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery()
-                .eq(WalletSymbolConfig::getBaseSymbol, chainId)
-                .eq(WalletSymbolConfig::getAggPolice, 0)
-                .isNotNull(WalletSymbolConfig::getAggAddress).last(" limit 1").oneOpt();
-        if (optionalWalletSymbolConfig.isPresent()) {
-            return optionalWalletSymbolConfig.get().getAggAddress();
-        }
-        return fromAddress;
-    }
+//    /**
+//     * 类似 btc 模型 找零
+//     *
+//     * @param chainId
+//     * @param fromAddress
+//     * @return
+//     */
+//    public String getChangeAddress(String chainId, String fromAddress) {
+//        ChainScanConfig scanConfig = chainScanConfigService.getByChainId(chainId);
+//        if (scanConfig == null) {
+//            throw new IllegalArgumentException(chainId);
+//        }
+//        Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery()
+//                .eq(WalletSymbolConfig::getBaseSymbol, scanConfig.get)
+//                .eq(WalletSymbolConfig::getAggPolice, 0)
+//                .isNotNull(WalletSymbolConfig::getAggAddress).last(" limit 1").oneOpt();
+//        if (optionalWalletSymbolConfig.isPresent()) {
+//            return optionalWalletSymbolConfig.get().getAggAddress();
+//        }
+//        return fromAddress;
+//    }
 
 }

@@ -23,7 +23,6 @@ public class WalletWithdraw implements Serializable {
     private Integer walletId;
     private Long uid;
     private String transId;
-    private Integer source;
     private String baseSymbol;
     private String symbol;
     private BigDecimal amount;
@@ -31,16 +30,12 @@ public class WalletWithdraw implements Serializable {
     private String addressTo;
     private String txid;
     private Integer confirmations;
-    private BigDecimal gas;
-    private String gasSymbol;
-    private Integer type;
     // 订单状态:0 提现审核中 1 审核不通过 2 审核成功 3 提现中 4 提现成功 5 提现失败
     private Integer status;
-    private Integer noticeStatus;
+    private Integer noticeStatus; // 0 未通知 1 已通知
     private String info;
     private Date ctime;
     private Date mtime;
-    private String memo;
 
     public Integer getId() {
         return id;
@@ -74,13 +69,7 @@ public class WalletWithdraw implements Serializable {
         this.transId = transId;
     }
 
-    public Integer getSource() {
-        return source;
-    }
 
-    public void setSource(Integer source) {
-        this.source = source;
-    }
 
     public String getBaseSymbol() {
         return baseSymbol;
@@ -138,30 +127,6 @@ public class WalletWithdraw implements Serializable {
         this.confirmations = confirmations;
     }
 
-    public BigDecimal getGas() {
-        return gas;
-    }
-
-    public void setGas(BigDecimal gas) {
-        this.gas = gas;
-    }
-
-    public String getGasSymbol() {
-        return gasSymbol;
-    }
-
-    public void setGasSymbol(String gasSymbol) {
-        this.gasSymbol = gasSymbol;
-    }
-
-    public Integer getType() {
-        return type;
-    }
-
-    public void setType(Integer type) {
-        this.type = type;
-    }
-
     public Integer getStatus() {
         return status;
     }
@@ -203,11 +168,4 @@ public class WalletWithdraw implements Serializable {
         this.mtime = mtime;
     }
 
-    public String getMemo() {
-        return memo;
-    }
-
-    public void setMemo(String memo) {
-        this.memo = memo;
-    }
 }

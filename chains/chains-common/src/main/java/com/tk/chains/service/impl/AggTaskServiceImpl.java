@@ -267,15 +267,17 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
      */
     private boolean filterMinimumAmount(CoinBalance coinBalance, Integer walletId, BlockChain blockChain, ChainScanConfig chainScanConfig) {
         BigDecimal gas = blockChain.gas(chainScanConfig, coinBalance.getCoinConfig());
+        SymbolConfig symbolConfig = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, coinBalance.getChainId()).eq(SymbolConfig::getContractAddress, coinBalance.getContractAddress()).one();
+        if (symbolConfig == null) {
+            return false;
+        }
         Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery()
-                .eq(WalletSymbolConfig::getContractAddress, coinBalance.getContractAddress())
+                .eq(WalletSymbolConfig::getSymbolConfigId, symbolConfig.getId())
                 .eq(WalletSymbolConfig::getWalletId, walletId)
-                .eq(WalletSymbolConfig::getBaseSymbol, coinBalance.getChainId()).last(" limit 1 ").oneOpt();
+                .last(" limit 1 ").oneOpt();
         if (optionalWalletSymbolConfig.isPresent()) {
             BigDecimal aggMinAmount = optionalWalletSymbolConfig.get().getAggMinAmount();
-            if (aggMinAmount != null && aggMinAmount.compareTo(coinBalance.getBalance()) > 0 && coinBalance.getBalance().compareTo(gas) > 0) {
-                return false;
-            }
+            return aggMinAmount == null || aggMinAmount.compareTo(coinBalance.getBalance()) <= 0 || coinBalance.getBalance().compareTo(gas) <= 0;
         }
         return true;
     }
@@ -431,24 +433,37 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
                 for (ChainScanConfig chainScanConfig : chainScanConfigs) {
                     Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery()
                             .eq(WalletSymbolConfig::getWalletId, walletId)
-                            .eq(WalletSymbolConfig::getBaseSymbol, chainScanConfig.getChainId())
+                            .inSql(WalletSymbolConfig::getSymbolConfigId, "select id from symbol_config where base_symbol = '" + chainScanConfig.getChainId() + "'")
                             .eq(WalletSymbolConfig::getAggPolice, 0).last(" limit 1").oneOpt();  // 至少存在一个币，是自动归集
                     if (optionalWalletSymbolConfig.isPresent() && StringUtils.isNotBlank(optionalWalletSymbolConfig.get().getAggAddress())) {
+
+                        SymbolConfig symbolConfig = symbolConfigService.lambdaQuery()
+                                .eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId()).eq(SymbolConfig::getContractAddress, "").one();
+
                         WalletSymbolConfig mainWalletSymbolConfig = walletSymbolConfigService.lambdaQuery()
                                 .eq(WalletSymbolConfig::getWalletId, walletId)
-                                .eq(WalletSymbolConfig::getContractAddress, "")
-                                .eq(WalletSymbolConfig::getBaseSymbol, chainScanConfig.getChainId()).one(); // 归集地址配置在主币
+                                .eq(WalletSymbolConfig::getSymbolConfigId, symbolConfig.getId())
+                                .one(); // 归集地址配置在主币
                         if (mainWalletSymbolConfig == null || StringUtils.isBlank(mainWalletSymbolConfig.getAggAddress()) ||
                                 StringUtils.isBlank(mainWalletSymbolConfig.getEnergyAddress())) {
                             continue;
                         }
+                        // 找出所有自动归集的币
                         List<WalletSymbolConfig> list = walletSymbolConfigService.lambdaQuery()
                                 .eq(WalletSymbolConfig::getWalletId, walletId)
-                                .eq(WalletSymbolConfig::getBaseSymbol, chainScanConfig.getChainId())
-                                .eq(WalletSymbolConfig::getAggPolice, 0).list(); // 找出所有自动归集的币
-                        List<String> contractList = list.stream().filter(item -> Objects.equals(item.getAggPolice(), 0)).map(WalletSymbolConfig::getContractAddress).collect(Collectors.toList());
-                        log.info("autoAgg : {},\t{},\t{},\t{}", chainScanConfig.getChainId(), walletId, contractList, contractList.size());
-                        this.agg(walletId, chainScanConfig.getChainId(), mainWalletSymbolConfig.getEnergyAddress(), mainWalletSymbolConfig.getAggAddress(), contractList, Lists.newArrayList());
+                                .inSql(WalletSymbolConfig::getSymbolConfigId, "select id from symbol_config where base_symbol = '" + chainScanConfig.getChainId() + "'")
+                                .eq(WalletSymbolConfig::getAggPolice, 0)
+                                .list();
+                        List<Integer> symbolIdList = list.stream().filter(item -> Objects.equals(item.getAggPolice(), 0)).map(WalletSymbolConfig::getSymbolConfigId).collect(Collectors.toList());
+                        log.info("autoAgg : {},\t{},\t{},\t{}", chainScanConfig.getChainId(), walletId, symbolIdList, symbolIdList.size());
+                        List<SymbolConfig> contractList = symbolConfigService.lambdaQuery().in(SymbolConfig::getId, symbolIdList).list();
+                        if (CollectionUtils.isEmpty(contractList)) {
+                            continue;
+                        }
+
+                        this.agg(walletId, chainScanConfig.getChainId(), mainWalletSymbolConfig.getEnergyAddress(), mainWalletSymbolConfig.getAggAddress(),
+                                contractList.stream().map(SymbolConfig::getContractAddress).collect(Collectors.toList()),
+                                Lists.newArrayList());
                     }
                 }
             }

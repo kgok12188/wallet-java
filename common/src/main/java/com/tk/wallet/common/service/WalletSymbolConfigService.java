@@ -45,12 +45,6 @@ public class WalletSymbolConfigService extends ServiceImpl<WalletSymbolConfigMap
         return this.list(lqw);
     }
 
-    public WalletSymbolConfig querySymbolConfig(String baseSymbol, String symbol, Integer walletId, Integer status) {
-        LambdaQueryWrapper<WalletSymbolConfig> lqw = new LambdaQueryWrapper<>();
-        lqw.eq(WalletSymbolConfig::getBaseSymbol, baseSymbol).eq(WalletSymbolConfig::getWalletId, walletId)
-                .eq(WalletSymbolConfig::getSymbol, symbol).eq(WalletSymbolConfig::getStatus, status);
-        return this.getOne(lqw);
-    }
 
     public List<Integer> distinctWalletIds() {
         return this.baseMapper.distinctWalletIds();

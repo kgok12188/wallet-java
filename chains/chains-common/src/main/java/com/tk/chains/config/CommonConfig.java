@@ -14,12 +14,8 @@ public class CommonConfig {
 
     private static final ExecutorService executorService = new ThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 3,
             Runtime.getRuntime().availableProcessors() * 3,
-            0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), new ThreadFactory() {
-        @Override
-        public Thread newThread(Runnable r) {
-            return new Thread(r, "chain-block-" + chainBlockIndex.incrementAndGet());
-        }
-    });
+            0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(),
+            r -> new Thread(r, "chain-block-" + chainBlockIndex.incrementAndGet()));
 
     @Bean
     @Qualifier("chainBlock")

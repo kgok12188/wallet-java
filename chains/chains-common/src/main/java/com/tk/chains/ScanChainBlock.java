@@ -17,6 +17,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.SmartLifecycle;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
@@ -32,23 +33,18 @@ import java.util.stream.Collectors;
  * 扫描区块
  */
 @EnableScheduling
-public class ScanChainBlock implements ApplicationContextAware {
+public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
 
 
+    private volatile boolean start = false;
     @Value("${chainIds:}")
     private String chainIds;
     private static final Logger log = LoggerFactory.getLogger(ScanChainBlock.class);
 
     private static final AtomicInteger chainBlockIndex = new AtomicInteger(0);
 
-    private static final ExecutorService executorService = new ThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 3, Runtime.getRuntime().availableProcessors() * 3, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), new ThreadFactory() {
-        @Override
-        public Thread newThread(Runnable r) {
-            return new Thread(r, "chain-block-" + chainBlockIndex.incrementAndGet());
-        }
-    });
-
-    private static final LinkedBlockingQueue<Runnable> linkedBlockingQueue = new LinkedBlockingQueue<>();
+    private static final ExecutorService executorService = new ThreadPoolExecutor(Runtime.getRuntime().availableProcessors() * 3, Runtime.getRuntime().availableProcessors() * 3,
+            0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), r -> new Thread(r, "chain-block-" + chainBlockIndex.incrementAndGet()));
 
     private static final ConcurrentHashMap<String, ReentrantLock> locksWithDraw = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, ReentrantLock> locksScan = new ConcurrentHashMap<>();
@@ -361,7 +357,11 @@ public class ScanChainBlock implements ApplicationContextAware {
         for (ChainScanConfig chainScanConfig : chainScanConfigs) {
             List<AggQueue> aggQueues = aggQueueService.lambdaQuery().eq(AggQueue::getChainId, chainScanConfig.getChainId()).orderByAsc(AggQueue::getId).last(" limit 100").list();
             for (AggQueue aggQueue : aggQueues) {
-                Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getWalletId, aggQueue.getWalletId()).eq(WalletSymbolConfig::getBaseSymbol, aggQueue.getChainId()).eq(WalletSymbolConfig::getContractAddress, "").isNotNull(WalletSymbolConfig::getAggAddress).isNotNull(WalletSymbolConfig::getEnergyAddress).last(" limit 1").oneOpt();
+                SymbolConfig config = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId()).eq(SymbolConfig::getContractAddress, "").one();
+                Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getWalletId, aggQueue.getWalletId())
+                        .eq(WalletSymbolConfig::getSymbolConfigId, config.getId())
+                        .isNotNull(WalletSymbolConfig::getAggAddress).isNotNull(WalletSymbolConfig::getEnergyAddress)
+                        .last(" limit 1").oneOpt();
                 if (optionalWalletSymbolConfig.isPresent()) {
                     String aggAddress = optionalWalletSymbolConfig.get().getAggAddress();
                     String energyAddress = optionalWalletSymbolConfig.get().getEnergyAddress();
@@ -378,7 +378,9 @@ public class ScanChainBlock implements ApplicationContextAware {
                         }
                     }
                     if (CollectionUtils.isEmpty(contractList)) {
-                        List<Integer> collect = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getWalletId, aggQueue.getWalletId()).eq(WalletSymbolConfig::getBaseSymbol, aggQueue.getChainId()).list().stream().map(WalletSymbolConfig::getSymbolConfigId).collect(Collectors.toList());
+                        List<Integer> collect = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getWalletId, aggQueue.getWalletId())
+                                .inSql(WalletSymbolConfig::getSymbolConfigId, "select id from symbol_config where base_symbol = '" + chainScanConfig.getChainId() + "'")
+                                .list().stream().map(WalletSymbolConfig::getSymbolConfigId).collect(Collectors.toList());
                         if (CollectionUtils.isNotEmpty(collect)) {
                             contractList = symbolConfigService.lambdaQuery().in(SymbolConfig::getId, collect).list().stream().map(SymbolConfig::getContractAddress).collect(Collectors.toList());
                         }
@@ -390,6 +392,23 @@ public class ScanChainBlock implements ApplicationContextAware {
                 aggQueueService.removeById(aggQueue.getId());
             }
         }
+    }
+
+    @Override
+    public void start() {
+        start = true;
+    }
+
+    @Override
+    public void stop() {
+        chainJobManager.stop();
+        executorService.shutdown();
+        start = false;
+    }
+
+    @Override
+    public boolean isRunning() {
+        return start;
     }
 
 }

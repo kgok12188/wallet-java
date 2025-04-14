@@ -66,4 +66,8 @@ public interface ChainScanConfigMapper extends BaseMapper<ChainScanConfig> {
 
     @Update("update scan_chain_queue set status = 0 where status = 1 and ctime < #{date}")
     Integer updateLostTime(@Param("date") Date date);
+
+    @Update("update chain_scan_config set task_id = ''  where task_id = #{taskId}")
+    void remove(@Param("taskId") String taskId);
+
 }

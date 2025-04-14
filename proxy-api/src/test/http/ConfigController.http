@@ -1,0 +1,8 @@
+### POST 获取支持的所有币种
+POST http://localhost:19901/api/v1/coins
+Content-Type: application/json
+
+{
+  "pid": 1
+}
+###

@@ -64,7 +64,7 @@ endpoints 设置说明
 public class LIkeETHBlockChain extends BlockChain<Web3j> {
 
     private Integer id;
-    private String methodId = "0xa9059cbb";
+    private final String methodId = "0xa9059cbb";
 
     private volatile Map<String, SymbolConfig> configHashMap = new HashMap<>();
 
@@ -112,7 +112,6 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                         chainTransactions.add(chainTransaction);
                         chainTransactionsMap.put(chainTransaction.getHash(), chainTransactions);
                     }
-                    log.info("hash = {},\tcontract :{},\tfrom: {}, to: {}, amount: {}", hash, contract, from, to, amount);
                 }
             }
         }
@@ -166,9 +165,8 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     /**
      * 设置交易状态
      *
-     * @param transactionReceipt
-     * @param chainTransaction
-     * @throws IOException
+     * @param transactionReceipt 链上状态
+     * @param chainTransaction   交易
      */
     private void updateStatusAndGas(Optional<TransactionReceipt> transactionReceipt, ChainTransaction chainTransaction) {
         if (transactionReceipt.isPresent()) {
@@ -192,9 +190,9 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     /**
      * erc 20 代币
      *
-     * @param transactionObject
-     * @param coinConfig
-     * @return
+     * @param transactionObject 交易信息
+     * @param coinConfig        币种配置
+     * @return 交易信息
      */
     private ChainTransaction erc20Token(Transaction transactionObject, SymbolConfig coinConfig) {
         String input = transactionObject.getInput();
@@ -226,9 +224,9 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     /**
      * coin 解析
      *
-     * @param transactionObject
-     * @param coinConfig
-     * @return
+     * @param transactionObject 链上状态
+     * @param coinConfig        币种配置
+     * @return 交易嘻嘻
      */
     private ChainTransaction coin(Transaction transactionObject, SymbolConfig coinConfig) {
         BigDecimal amount = Convert.fromWei(transactionObject.getValue().toString(), getConvertUnit(coinConfig.getSymbolPrecision(), ""));
@@ -260,18 +258,6 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     }
 
     public Convert.Unit getConvertUnit(Integer unit, String symbol) {
-        /**
-         * WEI("wei", 0),
-         *         KWEI("kwei", 3),
-         *         MWEI("mwei", 6),
-         *         GWEI("gwei", 9),
-         *         SZABO("szabo", 12),
-         *         FINNEY("finney", 15),
-         *         ETHER("ether", 18),
-         *         KETHER("kether", 21),
-         *         METHER("mether", 24),
-         *         GETHER("gether", 27);
-         */
         switch (unit) {
             case 0:
                 return Convert.Unit.WEI;
@@ -338,10 +324,10 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     /**
      * 查询链上交易
      *
-     * @param chainScanConfig
-     * @param hash
-     * @param excludeUrl
-     * @return
+     * @param chainScanConfig 链配置
+     * @param hash            hash
+     * @param excludeUrl      排除的节点
+     * @return 交易信息
      */
     @Override
     public List<ChainTransaction> getChainTransaction(ChainScanConfig chainScanConfig, String hash, String excludeUrl) {
@@ -369,34 +355,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 }
             }
         } catch (Exception e) {
-            log.warn("getChainTransaction = " + hash, e);
-            markClientError(chainClient);
-        }
-        return chainTransactions;
-    }
-
-    private List<ChainTransaction> getChainTransaction(String hash) {
-        List<ChainTransaction> chainTransactions = new ArrayList<>();
-        ChainClient chainClient = getChainClient(null);
-        try {
-            Optional<Transaction> transactionOptional = chainClient.getClient().ethGetTransactionByHash(hash).send().getTransaction();
-            Optional<TransactionReceipt> transactionReceiptOptional = chainClient.getClient().ethGetTransactionReceipt(hash).send().getTransactionReceipt();
-            if (transactionOptional.isPresent() && transactionReceiptOptional.isPresent()) {
-                Transaction transaction = transactionOptional.get();
-                ChainTransaction chainTransaction;
-                if (configHashMap.containsKey(transaction.getTo().toLowerCase())) {
-                    chainTransaction = erc20Token(transaction, this.configHashMap.get(transaction.getTo().toLowerCase()));
-                } else {
-                    chainTransaction = coin(transaction, this.mainCoinConfig);
-                }
-                if (chainTransaction != null) {
-                    chainTransaction.setGas(new BigDecimal(transaction.getGasPrice().multiply(transaction.getGas())));
-                    updateStatusAndGas(transactionReceiptOptional, chainTransaction);
-                    chainTransactions.add(chainTransaction);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("getChainTransaction = " + hash, e);
+            log.warn("getChainTransaction = {}", hash, e);
             markClientError(chainClient);
         }
         return chainTransactions;
@@ -413,7 +372,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         try {
             transactionReceiptOptional = chainClient.getClient().ethGetTransactionReceipt(chainTransaction.getHash()).send().getTransactionReceipt();
         } catch (Exception e) {
-            log.error(chainTransaction.getChainId() + "\tconfirmTransaction = " + chainTransaction.getHash(), e);
+            log.error("{}\tconfirmTransaction = {}", chainTransaction.getChainId(), chainTransaction.getHash(), e);
             markClientError(chainClient);
             return;
         }
@@ -488,7 +447,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     @Override
     protected BigDecimal getBalance(String address, BigInteger blockNumber) {
         BigDecimal balanceOrigin = getBalanceOrigin(null, address, DefaultBlockParameter.valueOf(blockNumber));
-        return balanceOrigin.divide(this.mainCoinConfig.precision());
+        return balanceOrigin.divide(this.mainCoinConfig.precision(), 16, RoundingMode.DOWN);
     }
 
     @Override
@@ -747,7 +706,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 try {
                     hexValue = StringUtils.isBlank(transaction.getContract()) ? coinSignMessage(transaction) : tokenSignMessage(transaction);
                 } catch (Exception e) {
-                    log.error("end transfer : " + transaction.getId(), e);
+                    log.error("end transfer : {}", transaction.getId(), e);
                     break;
                 }
                 if (StringUtils.isEmpty(hexValue)) {
@@ -777,7 +736,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                         ethSendTransaction = chainClient.getClient().ethSendRawTransaction(hexValue).sendAsync().get();
                     } catch (Exception e) {
                         blockTransactionManager.releaseWaitingHash(transaction.getId());
-                        log.error("1_ethSendRawTransaction : " + transaction.getId() + ",\t" + transaction.getBusinessId() + ",\t" + chainClient.getUrl(), e);
+                        log.error("1_ethSendRawTransaction : {},\t{},\t{}", transaction.getId(), transaction.getBusinessId(), chainClient.getUrl(), e);
                         markClientError(chainClient);
                         break;
                     }
@@ -805,7 +764,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     /**
      * 主币签名
      *
-     * @return
+     * @return 交易签名
      */
     private String coinSignMessage(ChainTransaction transaction) {
         JSONObject jsonObject = new JSONObject();
@@ -865,7 +824,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 return BigDecimal.ZERO;
             }
         }
-        return new BigDecimal(gasPrice.multiply(jsonObject.getBigInteger("limit"))).divide(mainCoinConfig.precision());
+        return new BigDecimal(gasPrice.multiply(jsonObject.getBigInteger("limit"))).divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN);
     }
 
     @Override
@@ -914,7 +873,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             try {
                 this.id = web3j.ethChainId().send().getChainId().intValue();
             } catch (Exception e) {
-                log.warn("get_chainId_error_" + this.getChainId(), e);
+                log.warn("get_chainId_error_{}", this.getChainId(), e);
             }
             log.info("1_create_like_eth : chain = {},\t id = {}", this.getChainId(), id);
         }

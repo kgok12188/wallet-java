@@ -5,6 +5,7 @@ import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ScanChainQueue;
 import com.tk.wallet.common.mapper.ChainScanConfigMapper;
 import com.tk.wallet.common.service.ChainScanConfigService;
+import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +18,6 @@ import java.util.UUID;
 
 @Service
 public class ChainJobManager {
-
 
     private final String taskId;
 
@@ -95,6 +95,10 @@ public class ChainJobManager {
     public int updateLostTime() {
         Integer rows = chainScanConfigMapper.updateLostTime(new Date(System.currentTimeMillis() - (180 * 1000)));
         return rows == null ? 0 : rows;
+    }
+
+    public void stop() {
+        chainScanConfigMapper.remove(getTaskId());
     }
 
 }
