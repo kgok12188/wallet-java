@@ -50,7 +50,4 @@ public class WalletSymbolConfigService extends ServiceImpl<WalletSymbolConfigMap
         return this.baseMapper.distinctWalletIds();
     }
 
-    public String getPublicKeyByAddress(String address) {
-        return this.baseMapper.getPublicKeyByAddress(address);
-    }
 }

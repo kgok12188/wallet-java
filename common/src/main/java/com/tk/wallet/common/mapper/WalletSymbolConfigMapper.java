@@ -20,7 +20,4 @@ public interface WalletSymbolConfigMapper extends BaseMapper<WalletSymbolConfig>
     @Select("select distinct wallet_id from wallet_symbol_config where agg_police = 0")
     List<Integer> distinctWalletIds();
 
-    @Select("select agg_address_public_key from wallet_symbol_config where agg_address = #{address} limit 1")
-    String getPublicKeyByAddress(@Param("address") String address);
-
 }

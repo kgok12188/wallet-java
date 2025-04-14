@@ -333,3 +333,14 @@ CREATE TABLE `wallet_withdraw`
     KEY `idx_created_at` (`ctime`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8 COMMENT ='提现任务';
+
+
+DROP TABLE IF EXISTS `wallet_user`;
+CREATE TABLE `wallet_user`
+(
+    `id`        int(11) unsigned NOT NULL AUTO_INCREMENT,
+    callbackUrl varchar(200)     NOT NULL DEFAULT '',
+    ctime       timestamp        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    mtime       timestamp        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8 COMMENT ='商户表';
