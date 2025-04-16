@@ -15,3 +15,5 @@
 #### 2.3 tron 接入trc20和trx
 ### 3、proxy-api 钱包api接口服务
 该服务对接商户接口，提供获取地址接口、提币请求、读取交易记录接口、充值回调、提现完成后回调
+
+## 安全加固说明 [README.md](fingerprint/README.md)
