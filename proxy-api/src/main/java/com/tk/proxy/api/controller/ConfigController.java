@@ -1,6 +1,7 @@
 package com.tk.proxy.api.controller;
 
 import com.alibaba.fastjson.JSONObject;
+import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.SymbolConfig;
 import com.tk.wallet.common.entity.WalletSymbolConfig;
 import com.tk.wallet.common.service.AddressService;
@@ -59,8 +60,12 @@ public class ConfigController {
     @ApiImplicitParams({@ApiImplicitParam(value = "pid", example = "项目编号")})
     public R<Set<String>> getChains(@RequestBody JSONObject params) {
         Integer walletId = params.getInteger("pid");
-        List<SymbolConfig> symbolConfigs = symbolConfigService.lambdaQuery().inSql(SymbolConfig::getId, "select symbol_config_id from wallet_symbol_config where wallet_id = " + walletId).list();
-        return R.success(symbolConfigs.stream().map(SymbolConfig::getBaseSymbol).collect(Collectors.toSet()));
+        if (walletId == null) {
+            return R.success(chainScanConfigService.lambdaQuery().list().stream().map(ChainScanConfig::getChainId).collect(Collectors.toSet()));
+        } else {
+            List<SymbolConfig> symbolConfigs = symbolConfigService.lambdaQuery().inSql(SymbolConfig::getId, "select symbol_config_id from wallet_symbol_config where wallet_id = " + walletId).list();
+            return R.success(symbolConfigs.stream().map(SymbolConfig::getBaseSymbol).collect(Collectors.toSet()));
+        }
     }
 
     @PostMapping("/api/v1/address/create")
@@ -72,7 +77,7 @@ public class ConfigController {
     public R<Map<String, String>> addressCreate(@RequestBody JSONObject params) {
         Integer walletId = params.getInteger("pid");
         String chainId = params.getString("chain_id");
-        addressService.getAndSaveAddress(walletId, chainId, chainScanConfigService.getByChainId(chainId));
+        addressService.getAndSaveAddress(walletId, chainId, chainScanConfigService.getByChainId(chainId), 0L);
         return null;
     }
 

@@ -6,3 +6,11 @@ Content-Type: application/json
   "pid": 1
 }
 ###
+
+### POST 获取支持的所有币种
+POST http://localhost:19901/api/v1/chains
+Content-Type: application/json
+
+{
+
+}

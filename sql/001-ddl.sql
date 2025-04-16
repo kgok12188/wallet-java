@@ -1,3 +1,4 @@
+use wallet;
 DROP TABLE IF EXISTS `agg_circuit_breaker`;
 CREATE TABLE `agg_circuit_breaker`
 (
@@ -65,7 +66,7 @@ CREATE TABLE `agg_task_dependency`
     KEY `task_id_2` (`task_id`),
     KEY `parent_task_id` (`parent_task_id`)
 ) ENGINE = InnoDB
-  AUTO_INCREMENT = 63
+  AUTO_INCREMENT = 1
   DEFAULT CHARSET = latin1;
 
 DROP TABLE IF EXISTS `chain_events`;
@@ -229,7 +230,8 @@ CREATE TABLE `symbol_config`
     `ctime`            timestamp        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `mtime`            timestamp        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
     `token_symbol`     varchar(200)              DEFAULT '' COMMENT '链上币种名称',
-    PRIMARY KEY (`id`)
+    PRIMARY KEY (`id`),
+    unique key `uidx_base_symbol_contract` (`base_symbol`, `contract_address`)
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 11
   DEFAULT CHARSET = utf8mb3 COMMENT ='币种配置表';
@@ -239,6 +241,7 @@ CREATE TABLE `wallet_address`
 (
     `id`          int unsigned     NOT NULL AUTO_INCREMENT,
     `wallet_id`   int              NOT NULL,
+    `uid`         bigint(20)                default 0,
     `base_symbol` varchar(32)      NOT NULL COMMENT '主链币代号，大写字母 TRX，ETH',
     `address`     varchar(200)     NOT NULL DEFAULT '' COMMENT '到账地址',
     `use_status`  tinyint                   DEFAULT NULL,
@@ -257,14 +260,11 @@ CREATE TABLE `wallet_symbol_config`
 (
     `id`                 int unsigned             NOT NULL AUTO_INCREMENT,
     `wallet_id`          int                      NOT NULL COMMENT '钱包id',
-    `symbol_config_id`   int                      NOT NULL COMMENT '全局配置id',
-    `base_symbol`        varchar(32)              NOT NULL COMMENT '货币代号，大写字母 TRX，ETH',
-    `symbol`             varchar(32)              NOT NULL COMMENT '加密货币 trx ,usdt_trc20',
+    `symbol_config_id`   int                      NOT NULL COMMENT 'symbol_config的id',
     `agg_address`        varchar(200)             NOT NULL DEFAULT '' COMMENT '归集地址，归集到该地址',
     `withdraw_address`   varchar(200)             NOT NULL DEFAULT '' COMMENT '提现地址，从该地址提现',
     `energy_address`     varchar(200)             NOT NULL DEFAULT '' COMMENT '能量地址，从该地址发出能量',
     `config_json`        varchar(400)             NOT NULL DEFAULT '' COMMENT '自定义配置',
-    `contract_address`   varchar(200)             NOT NULL DEFAULT '',
     `check_police`       tinyint unsigned         NOT NULL DEFAULT '0' COMMENT '提现策略： 0 无需审核 1 手动审核 2 自动策略模式1',
     `agg_police`         tinyint unsigned         NOT NULL DEFAULT '0' COMMENT '归集策略： 手动归集 自定归集模式1 ',
     `status`             tinyint unsigned         NOT NULL DEFAULT '0' COMMENT '币种状态 0 未使用 1 使用中',
@@ -274,15 +274,11 @@ CREATE TABLE `wallet_symbol_config`
     `to_cold_threshold`  decimal(38, 19) unsigned NOT NULL DEFAULT '0.0000000000000000000' COMMENT '转冷阈值',
     `to_cold_min_amount` decimal(38, 19) unsigned NOT NULL DEFAULT '0.0000000000000000000' COMMENT '转冷最小值',
     `cold_address`       varchar(200)             NOT NULL DEFAULT '',
-    `fingerprint`        varchar(200)             NOT NULL DEFAULT '',
-    `token_symbol`       varchar(200)             NOT NULL DEFAULT '',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `unx_symbol_config` (`wallet_id`, `base_symbol`, `symbol`),
-    UNIQUE KEY `uidx_wallet_id_symbol_config_id` (`wallet_id`, `symbol_config_id`),
-    UNIQUE KEY `uidx_wallet_id_base_symbol_contract_address` (`wallet_id`, `base_symbol`, `contract_address`)
+    UNIQUE KEY `uidx_wallet_id_symbol_config_id` (`wallet_id`, `symbol_config_id`)
 ) ENGINE = InnoDB
   AUTO_INCREMENT = 1
-  DEFAULT CHARSET = utf8mb3 COMMENT ='币种配置表';
+  DEFAULT CHARSET = utf8mb3 COMMENT ='商户币种配置表';
 
 DROP TABLE IF EXISTS `withdraw_to_cold_address`;
 CREATE TABLE `withdraw_to_cold_address`
@@ -297,7 +293,6 @@ CREATE TABLE `withdraw_to_cold_address`
     `status`           int                      NOT NULL                             DEFAULT '0' COMMENT '0 未完成, 1 进行中 2 完成 3 失败',
     `business_id`      varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '充值业务id',
     `hash`             varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '链上交易hash',
-    `fingerprint`      varchar(200)             NOT NULL                             DEFAULT '',
     `ctime`            datetime                 NOT NULL                             DEFAULT CURRENT_TIMESTAMP,
     `mtime`            datetime                 NOT NULL                             DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
@@ -335,12 +330,62 @@ CREATE TABLE `wallet_withdraw`
   DEFAULT CHARSET = utf8 COMMENT ='提现任务';
 
 
+use wallet;
+
 DROP TABLE IF EXISTS `wallet_user`;
 CREATE TABLE `wallet_user`
 (
-    `id`        int(11) unsigned NOT NULL AUTO_INCREMENT,
+    `id`        int(11) unsigned NOT NULL primary key AUTO_INCREMENT,
     callbackUrl varchar(200)     NOT NULL DEFAULT '',
     ctime       timestamp        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     mtime       timestamp        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8 COMMENT ='商户表';
+
+
+
+DROP TABLE IF EXISTS `wallet_deposit`;
+CREATE TABLE `wallet_deposit`
+(
+    `id`            INT(11) UNSIGNED         NOT NULL AUTO_INCREMENT,
+    `uid`           INT(11) UNSIGNED                  default 0,
+    `wallet_id`     INT(11) UNSIGNED         NOT NULL,
+    `base_symbol`   VARCHAR(32)              NOT NULL COMMENT '货币代号，大写字母 TRX，ETH',
+    `symbol`        VARCHAR(32)              NOT NULL COMMENT '加密货币 trx ,usdt_trc20',
+    `contract`      VARCHAR(200)             NOT NULL DEFAULT '' COMMENT '合约地址',
+    `address_to`    VARCHAR(200)             NOT NULL DEFAULT '' COMMENT '到账地址',
+    `amount`        DECIMAL(32, 16) UNSIGNED NOT NULL COMMENT '充值金额',
+    `txid`          VARCHAR(128)             NOT NULL DEFAULT '' COMMENT '区块链交易ID',
+    `transfer_id`   VARCHAR(200)             NOT NULL COMMENT '扫描交易获得的全局唯一id',
+    `confirmations` BIGINT(19) UNSIGNED               DEFAULT 0 COMMENT '确认数',
+    `status`        TINYINT(3) UNSIGNED      NOT NULL DEFAULT 0 COMMENT '充值状态: 0 充值中，1 充值成功，2 充值失败',
+    `notice_status` TINYINT(3) UNSIGNED      NOT NULL DEFAULT 0 COMMENT '通知状态:0 未通知 1 已通知',
+    `info`          VARCHAR(200)             NOT NULL DEFAULT '' COMMENT '描述',
+    `ctime`         TIMESTAMP                NOT NULL DEFAULT now() COMMENT '创建时间',
+    `mtime`         TIMESTAMP                NOT NULL DEFAULT now() COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uid` (`transfer_id`),
+    KEY `idx_to_address` (`address_to`),
+    KEY `idx_txid` (`txid`),
+    KEY `idx_created_at` (`ctime`)
+) ENGINE = INNODB
+  AUTO_INCREMENT = 5
+  DEFAULT CHARSET = utf8 COMMENT ='充值任务';
+
+
+alter table `agg_task`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `chain_transaction`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `wallet_address`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `wallet_deposit`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `wallet_symbol_config`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `wallet_withdraw`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `withdraw_to_cold_address`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';
+alter table `symbol_config`
+    add column `fingerprint` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '数据指纹';

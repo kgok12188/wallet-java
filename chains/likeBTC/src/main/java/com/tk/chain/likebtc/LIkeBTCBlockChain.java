@@ -256,7 +256,7 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                         blockTransactionManager.releaseWaitingHash(chainTransaction.getId());
                     }
                     markClientError(chainClient);
-                    log.error("sendRawTransaction " + StringUtils.join(chainTransactions.stream().map(ChainTransaction::getId).collect(Collectors.toList())), e);
+                    log.error("sendRawTransaction {}", StringUtils.join(chainTransactions.stream().map(ChainTransaction::getId).collect(Collectors.toList())), e);
                     return;
                 }
                 if (StringUtils.isNotBlank(hash)) {

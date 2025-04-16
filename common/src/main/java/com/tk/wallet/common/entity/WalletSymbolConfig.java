@@ -18,7 +18,7 @@ import java.util.Objects;
  */
 @TableName("wallet_symbol_config")
 @Data
-public class WalletSymbolConfig implements CalcFingerprint {
+public class WalletSymbolConfig implements CalcFingerprint<Integer> {
 
     private static final long serialVersionUID = 1L;
 
@@ -36,29 +36,32 @@ public class WalletSymbolConfig implements CalcFingerprint {
     private String aggAddress;
 
 
+    //(value = "提现地址")
+    private String withdrawAddress;
+
     //(value = "能量地址，从该地址发出能量")
     private String energyAddress;
 
 
     //(value = "自定义配置")
-    private String configJson;
+    private String configJson = "{}";
 
     //(value = "提现策略： 0 无需审核 1 手动审核 ")
-    private Integer checkPolice;
+    private Integer checkPolice = 0;
 
 
     //(value = "币种状态 0 未使用 1 使用中")
-    private Integer status;
+    private Integer status = 1;
 
     //(value = "归集策略： 0 自动归集 1 手动归集 ")
-    private Integer aggPolice;
+    private Integer aggPolice = 0;
 
     //(value = "最小归集金额")
-    private BigDecimal aggMinAmount;
+    private BigDecimal aggMinAmount = BigDecimal.ZERO;
 
-    private BigDecimal toColdThreshold; // 转冷钱包阈值
+    private BigDecimal toColdThreshold = new BigDecimal("100"); // 转冷钱包阈值
 
-    private BigDecimal toColdMinAmount; // 转冷钱包,最低金额
+    private BigDecimal toColdMinAmount = new BigDecimal("50"); // 转冷钱包,最低金额
 
     //(value = "冷钱包地址")
     private String coldAddress;
@@ -74,7 +77,7 @@ public class WalletSymbolConfig implements CalcFingerprint {
 
     @Override
     public String calcFingerprint(String key) {
-        return MD5Util.getMD5(coldAddress + "-" + walletId + "-" + symbolConfigId + "-" + aggAddress + "-" + energyAddress + "-" + key);
+        return MD5Util.getMD5("wallet_symbol_config" + coldAddress + "-" + walletId + "-" + symbolConfigId + "-" + aggAddress + "-" + energyAddress + "-" + key);
     }
 
     @Override

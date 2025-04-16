@@ -1,0 +1,9 @@
+### POST 获取支持的所有币种
+POST http://localhost:19901/address/get
+Content-Type: application/json
+
+{
+  "chain": "BSC",
+  "appId": 1,
+  "uid": 10000
+}

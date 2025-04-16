@@ -1,4 +1,4 @@
-package com.tk.chain.eth;
+package com.tk.chain.likebtc;
 
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
@@ -17,7 +17,7 @@ import java.util.HashSet;
  * 动作加载链
  */
 @Service
-public class BlockChainRegister implements ApplicationContextAware {
+public class LikeBTCBlockChainRegister implements ApplicationContextAware {
 
     private static final HashSet<String> chainIdList = new HashSet<>();
 
@@ -29,7 +29,7 @@ public class BlockChainRegister implements ApplicationContextAware {
         registerBean();
     }
 
-    public BlockChainRegister(@Value("${chainIds:}") String chainIds) {
+    public LikeBTCBlockChainRegister(@Value("${chainIds:}") String chainIds) {
         String[] list = chainIds.split(",");
         for (String chainId : list) {
             if (StringUtils.isNotBlank(chainId)) {
@@ -42,7 +42,7 @@ public class BlockChainRegister implements ApplicationContextAware {
         for (String chainId : chainIdList) {
             // 1. 通过 BeanDefinitionBuilder 构建定义
             BeanDefinitionBuilder builder = BeanDefinitionBuilder
-                    .genericBeanDefinition(LIkeETHBlockChain.class)
+                    .genericBeanDefinition(LIkeBTCBlockChain.class)
                     .setScope(ConfigurableBeanFactory.SCOPE_SINGLETON);
             // 2、注册到spring容器中
             ((BeanDefinitionRegistry) applicationContext.getBeanFactory())

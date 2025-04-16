@@ -32,7 +32,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -47,6 +46,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     @Value("${log.inv:60000}")
     protected long logInv;
     private long logTime = 0;
+    @Getter
     protected String chainId;
 
     protected EventManager eventManager;
@@ -198,7 +198,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 }
                 chainScanConfigService.updateBlockNumber(getChainId(), blockNumber);
             } catch (Exception e) {
-                log.error(String.format("chainId = %s,\tread  %s/%s,\turl = %s", getChainId(), blockNumber, chainScanConfig.getBlockHeight(), chainClient.getUrl()), e);
+                log.error("chainId = {},\tread  {}/{},\turl = {}", getChainId(), blockNumber, chainScanConfig.getBlockHeight(), chainClient.getUrl(), e);
                 markClientError(chainClient);
                 break;
             }
@@ -349,8 +349,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 指定区块高度扫描
      *
-     * @param chainScanConfig
-     * @param blockNumber
+     * @param chainScanConfig 链配置
+     * @param blockNumber     区块高度
      * @return block读取的行数，返回0 不会扫描下一个区块
      */
     public ScanResult scan(ChainScanConfig chainScanConfig, BigInteger blockNumber) throws Exception {
@@ -360,8 +360,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 查询区块高度
      *
-     * @param chainScanConfig
-     * @return
+     * @param chainScanConfig 链配置
+     * @return 区块高度
      */
     public abstract String blockHeight(ChainScanConfig chainScanConfig);
 
@@ -369,8 +369,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 转账
      *
-     * @param chainScanConfig
-     * @param chainTransactions
+     * @param chainScanConfig   链配置
+     * @param chainTransactions 交易
      */
     public abstract void transfer(ChainScanConfig chainScanConfig, List<ChainTransaction> chainTransactions);
 
@@ -408,8 +408,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 根据hash 查询链上交易
      *
-     * @param hash
-     * @return
+     * @param hash hash
+     * @return 交易
      */
     public abstract List<ChainTransaction> getChainTransaction(ChainScanConfig chainScanConfig, String hash, String excludeUrl);
 
@@ -429,60 +429,43 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 交叉验证交易
      *
-     * @param chainScanConfig
-     * @param chainTransaction
+     * @param chainScanConfig 链配置
+     * @param chainTransaction 交易
      */
     public abstract void confirmTransaction(ChainScanConfig chainScanConfig, ChainTransaction chainTransaction);
 
 
     // ==========================start 远程签名====================================
-    private final Function<Map, String> defaultSign = new Function<Map, String>() {
-
-        @Override
-        public String apply(Map mapSign) {
-//            if (mapSign == null || mapSign.get("data") == null || StringUtils.isBlank(mapSign.get("data").toString())) {
-//                return "";
-//            }
-//            String encryptData = MapUtils.getString(mapSign, "data");
-//            String decrypt = AesUtils.decrypt(encryptData, AesUtils.k, AesUtils.v).replaceAll("\"", "");
-//            log.info("mapSign = {},\tdecrypt = {}", JSON.toJSONString(mapSign), decrypt);
-//            return decrypt;
-            return "";
-        }
-    };
-
     protected String sign(Object signObj) {
-        return sign(signObj, defaultSign);
-    }
-
-    protected String sign(Object signObj, Function<Map, String> signFunction) {
         String signUrl = chainScanConfig.getSignUrl();
-        JSONObject jsonObject = new RestTemplate().postForObject(signUrl, signObj, JSONObject.class);
-        if (jsonObject != null && jsonObject.containsKey("data")) {
-            return jsonObject.getString("data");
+        try {
+            JSONObject jsonObject = new RestTemplate().postForObject(signUrl, signObj, JSONObject.class);
+            if (jsonObject != null && jsonObject.containsKey("data")) {
+                return jsonObject.getString("data");
+            }
+        } catch (Exception e) {
+            log.error("sign : {}", chainId, e);
         }
         return "";
     }
-
     // ==========================end 远程签名====================================
-
 
     /**
      * 查询合约余额
      *
-     * @param chainScanConfig
-     * @param address
-     * @param tokenAddress
-     * @return
+     * @param chainScanConfig 链配置
+     * @param address         地址
+     * @param tokenAddress    合约地址()
+     * @return 金额
      */
     public abstract BigDecimal getTokenBalance(ChainScanConfig chainScanConfig, String address, String tokenAddress);
 
     /**
      * 查询主币余额
      *
-     * @param chainScanConfig
-     * @param address
-     * @return
+     * @param chainScanConfig 链配置
+     * @param address         地址
+     * @return coin 余额
      */
     public abstract BigDecimal getBalance(ChainScanConfig chainScanConfig, String address);
 
@@ -490,9 +473,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 查询主币余额
      *
-     * @param
-     * @param address
-     * @return
+     * @param address 地址
+     * @return 指定高度查询余额
      */
     protected abstract BigDecimal getBalance(String address, BigInteger blockNumber);
 
@@ -500,18 +482,18 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 查询代币余额
      *
-     * @param
-     * @param address
-     * @return
+     * @param address      地址
+     * @param tokenAddress 合约地址
+     * @return 金额
      */
     protected abstract BigDecimal getTokenBalance(String address, String tokenAddress, BigInteger blockNumber);
 
     /**
      * 查询转账gas
      *
-     * @param chainScanConfig
-     * @param coinConfig
-     * @return
+     * @param chainScanConfig 链配置
+     * @param coinConfig      币种配置
+     * @return gas
      */
     public abstract BigDecimal gas(ChainScanConfig chainScanConfig, SymbolConfig coinConfig);
 
@@ -519,7 +501,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
      * 定时刷新配置 60s 刷新一次
      * 更新客户端配置
      *
-     * @param chainScanConfig
+     * @param chainScanConfig 链配置
      */
     public void freshChainScanConfig(ChainScanConfig chainScanConfig) {
         if (StringUtils.isBlank(chainId)) {
@@ -628,7 +610,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 格式化地址
      *
-     * @param chainTransaction
+     * @param chainTransaction 交易
      */
     public void formatAddress(ChainTransaction chainTransaction) {
 
@@ -647,6 +629,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     }
 
     public abstract class ChainClient implements Closeable {
+        @Getter
         private final String url;
         private final Object client;
         private int sort = 0;
@@ -660,21 +643,17 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
             this.client = client;
         }
 
-        public String getUrl() {
-            return url;
-        }
-
+        @SuppressWarnings("unchecked")
         public T getClient() {
             return (T) client;
         }
-
     }
 
     /**
      * 创建客户端
      *
-     * @param item
-     * @return
+     * @param item 创建客户端的配置
+     * @return ChainClient
      */
     protected abstract ChainClient create(JSONObject item);
 
@@ -683,7 +662,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
      * 获取客户端，从队列头开始获取
      *
      * @param excludeUrl 排除特定url的客户端
-     * @return
+     * @return ChainClient
      */
     protected ChainClient getChainClient(Set<String> excludeUrl) {
         if (CollectionUtils.isEmpty(chainClients)) {
@@ -709,13 +688,9 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 客户端执行出错，并将放置到队尾
      *
-     * @param chainClient
+     * @param chainClient 客户端
      */
     protected void markClientError(ChainClient chainClient) {
-        markClientError(chainClient, false);
-    }
-
-    protected void markClientError(ChainClient chainClient, boolean remove) {
         if (chainClient == null || chainClients == null || chainClients.size() <= 1) {
             return;
         }
@@ -733,11 +708,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 }
             }
             if (flag) {
-                if (!remove) {
-                    log.warn("remove {} client : {}", this.getChainId(), chainClient.getUrl());
-                } else {
-                    chainClients.add(chainClient);
-                }
+                chainClients.add(chainClient);
                 if (chainClients.size() > 1) {
                     log.info("markClientError 调整客户端优先级 {} : {}", getChainId(), chainClients.stream().map(ChainClient::getUrl).collect(Collectors.toList()));
                 }
@@ -748,39 +719,22 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     }
 
 
-    public String getChainId() {
-        return chainId;
-    }
-
+    @Setter
+    @Getter
     public static class LastBlockInfo {
         private BigInteger blockNumber;
         private Date blockTime;
-
-        public BigInteger getBlockNumber() {
-            return blockNumber;
-        }
-
-        public void setBlockNumber(BigInteger blockNumber) {
-            this.blockNumber = blockNumber;
-        }
-
-        public Date getBlockTime() {
-            return blockTime;
-        }
-
-        public void setBlockTime(Date blockTime) {
-            this.blockTime = blockTime;
-        }
     }
 
     public abstract LastBlockInfo getLastBlockInfo() throws Exception;
 
 
+    @Getter
     public static class ScanResult {
         private int count = 0;
         List<ChainTransaction> chainTransactions;
-        private BigInteger blockNumber;
-        private Date blockTime;
+        private final BigInteger blockNumber;
+        private final Date blockTime;
 
         public ScanResult(int count, List<ChainTransaction> chainTransactions, BigInteger blockNumber, Date blockTime) {
             this.count = count;
@@ -789,21 +743,6 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
             this.blockTime = blockTime;
         }
 
-        public int getCount() {
-            return count;
-        }
-
-        public List<ChainTransaction> getChainTransactions() {
-            return chainTransactions;
-        }
-
-        public BigInteger getBlockNumber() {
-            return blockNumber;
-        }
-
-        public Date getBlockTime() {
-            return blockTime;
-        }
     }
 
 }

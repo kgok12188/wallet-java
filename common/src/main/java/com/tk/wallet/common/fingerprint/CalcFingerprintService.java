@@ -1,6 +1,7 @@
 package com.tk.wallet.common.fingerprint;
 
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.extension.service.IService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import javax.crypto.Cipher;
+import java.io.Serializable;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
@@ -35,16 +37,23 @@ public class CalcFingerprintService {
     @Value("${fingerprint.url:http://127.0.0.1:5678}")
     private String encryptUrl;
 
-    public void calcFingerprint(CalcFingerprint calcFingerprint) {
+
+    @SuppressWarnings("all")
+    public <T extends CalcFingerprint> void calcFingerprint(T calcFingerprint, IService<T> service, T update) {
         String originStr = calcFingerprint.calcFingerprint(salt);
         String fingerprint = encrypt(originStr);
         calcFingerprint.setFingerprint(fingerprint);
+        if (service != null) {
+            update.setId(calcFingerprint.getId());
+            update.setFingerprint(fingerprint);
+            service.updateById(update);
+        }
     }
 
     /*
      * 指纹校验
      * */
-    public boolean matchFingerprint(CalcFingerprint calcFingerprint) {
+    public <T extends CalcFingerprint<?>> boolean matchFingerprint(T calcFingerprint) {
         String originStr = calcFingerprint.calcFingerprint(salt);
         RestTemplate restTemplate = new RestTemplate();
         HashMap<String, Object> params = new HashMap<>();

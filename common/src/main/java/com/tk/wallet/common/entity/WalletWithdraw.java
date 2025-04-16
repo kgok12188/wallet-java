@@ -2,6 +2,7 @@ package com.tk.wallet.common.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.tk.wallet.common.fingerprint.CalcFingerprint;
 import com.tk.wallet.common.fingerprint.MD5Util;
 import lombok.Getter;
@@ -18,11 +19,22 @@ import java.util.Date;
  */
 @Setter
 @Getter
-public class WalletWithdraw implements Serializable, CalcFingerprint {
+@TableName("wallet_withdraw")
+public class WalletWithdraw implements Serializable, CalcFingerprint<Long> {
+
+    // 订单状态:0 提现审核中 1 审核不通过 2 审核成功 3 提现中 4 提现成功 5 提现失败
+    public enum Status {
+        INIT,
+        AUDIT_FAIL,
+        AUDIT_SUCCESS,
+        WITHDRAWING,
+        SUCCESS,
+        FAIL
+    }
 
     private static final long serialVersionUID = 1L;
     @TableId(value = "id", type = IdType.AUTO)
-    private Integer id;
+    private Long id;
     private Integer walletId;
     private Long uid = 0L;
     private String transId;

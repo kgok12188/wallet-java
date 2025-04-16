@@ -15,7 +15,7 @@ import java.util.Date;
 
 @TableName("chain_transaction")
 @Data
-public class ChainTransaction implements CalcFingerprint {
+public class ChainTransaction implements CalcFingerprint<Long> {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
     // 链id,BTC,ETH 等
@@ -83,7 +83,7 @@ public class ChainTransaction implements CalcFingerprint {
 
     @Override
     public String calcFingerprint(String key) {
-        return MD5Util.getMD5(id + "-" + chainId + "-" + businessId + "-" + fromAddress + "-" + toAddress + "-" + contract + "-" + amount.stripTrailingZeros().toPlainString() + "-" + key);
+        return MD5Util.getMD5(id + "-" + chainId + "-" + (StringUtils.isBlank(businessId) ? "" : businessId) + "-" + fromAddress + "-" + toAddress + "-" + (StringUtils.isBlank(contract) ? "" : contract) + "-" + amount.stripTrailingZeros().toPlainString() + "-" + key);
     }
 
     private BigInteger nonce;

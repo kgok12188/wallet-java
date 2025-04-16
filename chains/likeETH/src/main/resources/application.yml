@@ -18,4 +18,4 @@ mybatis-plus:
     mapUnderscoreToCamelCase: true
     #log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
-chainIds: BSC,ETH
+chainIds: BSC

@@ -17,7 +17,7 @@ import java.util.List;
 
 @TableName("agg_task")
 @Data
-public class AggTask implements CalcFingerprint {
+public class AggTask implements CalcFingerprint<Long> {
 
     // 任务状态 0:等待上链; 1:上链中; 2 完成; 3:余额不足; 4 依赖上游任务 5 失败
     public static Integer STATUS_WAIT_TO_CHAIN = 0;

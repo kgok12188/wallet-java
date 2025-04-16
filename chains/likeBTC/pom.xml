@@ -54,6 +54,12 @@
             <scope>system</scope>
             <systemPath>${pom.basedir}/libs/cli4j/btcd-cli4j-core-0.5.8.jar</systemPath>
         </dependency>
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>13.0</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
 </project>

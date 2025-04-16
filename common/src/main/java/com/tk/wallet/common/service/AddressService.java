@@ -6,6 +6,7 @@ import com.google.common.collect.Lists;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.WalletAddress;
 import com.tk.wallet.common.entity.WalletSymbolConfig;
+import com.tk.wallet.common.fingerprint.CalcFingerprintService;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -40,11 +41,22 @@ public class AddressService {
     private WalletWithdrawService walletWithdrawService;
     @Autowired
     private ChainScanConfigService chainScanConfigService;
+    @Autowired
+    private CalcFingerprintService calcFingerprintService;
 
 
-    public String getAndSaveAddress(Integer walletId, String chainId, ChainScanConfig chainScanConfig) {
+    public String getAndSaveAddress(Integer walletId, String chainId, ChainScanConfig chainScanConfig, Long uid) {
+        uid = uid == null ? 0L : uid;
         if (chainScanConfig == null) {
             return "";
+        }
+        if (StringUtils.isBlank(chainScanConfig.getAddressSymbol()) && uid > 0) {
+            WalletAddress walletAddress = walletAddressService.lambdaQuery().eq(WalletAddress::getWalletId, walletId)
+                    .eq(WalletAddress::getUid, uid)
+                    .eq(WalletAddress::getBaseSymbol, chainId).last("limit 1").one();
+            if (walletAddress != null) {
+                return walletAddress.getAddress();
+            }
         }
         String addressUrl = chainScanConfig.getAddressUrl();
         if (StringUtils.isBlank(addressUrl) && StringUtils.isNotBlank(chainScanConfig.getAddressSymbol())) {
@@ -62,7 +74,10 @@ public class AddressService {
             ResponseEntity<JSONObject> ret = restTemplate.postForEntity(addressUrl, new HashMap<>(), JSONObject.class);
             if (ret.getStatusCode().is2xxSuccessful() && ret.getBody() != null) {
                 String address = ret.getBody().getString("address");
-                this.save(address, walletId, chainId);
+                if (uid > 0 && StringUtils.isNotBlank(chainScanConfig.getAddressSymbol())) {
+                    this.save(address, walletId, chainScanConfig.getAddressSymbol(), uid);
+                }
+                this.save(address, walletId, chainId, uid);
                 return address;
             }
         } catch (Exception e) {
@@ -76,7 +91,7 @@ public class AddressService {
      * @param walletUser 商户uid
      * @param baseSymbol 链id
      */
-    public void save(String address, Integer walletUser, String baseSymbol) {
+    public void save(String address, Integer walletUser, String baseSymbol, Long uid) {
         WalletAddress walletAddress = new WalletAddress();
         walletAddress.setAddress(address);
         walletAddress.setWalletId(walletUser);
@@ -84,7 +99,9 @@ public class AddressService {
         walletAddress.setUseStatus(1);
         walletAddress.setCtime(new Date());
         walletAddress.setMtime(new Date());
+        walletAddress.setUid(uid);
         walletAddressService.save(walletAddress);
+        calcFingerprintService.calcFingerprint(walletAddress, walletAddressService, new WalletAddress());
     }
 
     public boolean owner(String fromAddress, String toAddress, String chainId, String hash) {
@@ -98,27 +115,5 @@ public class AddressService {
         List<WalletAddress> walletAddresses = walletAddressService.lambdaQuery().eq(WalletAddress::getAddress, address).eq(WalletAddress::getBaseSymbol, chainId).list();
         return CollectionUtils.isNotEmpty(walletAddresses);
     }
-
-//    /**
-//     * 类似 btc 模型 找零
-//     *
-//     * @param chainId
-//     * @param fromAddress
-//     * @return
-//     */
-//    public String getChangeAddress(String chainId, String fromAddress) {
-//        ChainScanConfig scanConfig = chainScanConfigService.getByChainId(chainId);
-//        if (scanConfig == null) {
-//            throw new IllegalArgumentException(chainId);
-//        }
-//        Optional<WalletSymbolConfig> optionalWalletSymbolConfig = walletSymbolConfigService.lambdaQuery()
-//                .eq(WalletSymbolConfig::getBaseSymbol, scanConfig.get)
-//                .eq(WalletSymbolConfig::getAggPolice, 0)
-//                .isNotNull(WalletSymbolConfig::getAggAddress).last(" limit 1").oneOpt();
-//        if (optionalWalletSymbolConfig.isPresent()) {
-//            return optionalWalletSymbolConfig.get().getAggAddress();
-//        }
-//        return fromAddress;
-//    }
 
 }

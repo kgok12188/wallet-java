@@ -1,0 +1,18 @@
+### GET 设置bsc 主币
+POST localhost:19903/walletSymbolConfig/add
+Content-Type: application/json
+
+{
+  "walletId": 1000,
+  "symbolConfigId": 15,
+  "coldAddress": "0x02ee3b978e91630bbca5d3dd76eb949d4fcce054"
+}
+
+### POST 设置bep20-usdt
+POST localhost:19903/walletSymbolConfig/add
+Content-Type: application/json
+
+{
+  "walletId": 1000,
+  "symbolConfigId": 16
+}

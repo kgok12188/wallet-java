@@ -3,6 +3,8 @@ package com.tk.wallet.common.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.tk.wallet.common.fingerprint.CalcFingerprint;
+import com.tk.wallet.common.fingerprint.MD5Util;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -19,7 +21,7 @@ import java.util.Date;
 @Setter
 @Getter
 @TableName("symbol_config")
-public class SymbolConfig implements Serializable {
+public class SymbolConfig implements Serializable, CalcFingerprint<Integer> {
 
     private static final long serialVersionUID = 1L;
 
@@ -29,15 +31,21 @@ public class SymbolConfig implements Serializable {
     private String symbol;
     private String tokenSymbol;
     private Integer confirmCount;
-    private String contractAddress;
+    private String contractAddress = "";
     private Integer symbolPrecision;
     private String configJson;
     private Integer status;
     private Date ctime;
     private Date mtime;
+    private String fingerprint;
 
     public BigDecimal precision() {
         return BigDecimal.TEN.pow(symbolPrecision);
+    }
+
+    @Override
+    public String calcFingerprint(String key) {
+        return MD5Util.getMD5(id + "-" + baseSymbol + "-" + symbol + "-" + contractAddress + "-" + key);
     }
 
 }

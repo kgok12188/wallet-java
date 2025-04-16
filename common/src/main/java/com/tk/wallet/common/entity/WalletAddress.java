@@ -20,7 +20,7 @@ import java.util.Date;
  */
 @Data
 @TableName("wallet_address")
-public class WalletAddress implements Serializable, CalcFingerprint {
+public class WalletAddress implements Serializable, CalcFingerprint<Integer> {
 
     private static final long serialVersionUID = 1L;
     @TableId(value = "id", type = IdType.AUTO)
@@ -35,6 +35,7 @@ public class WalletAddress implements Serializable, CalcFingerprint {
     private Date ctime;
     //(value = "更新时间")
     private Date mtime;
+    private Long uid;
 
     private String fingerprint;
 

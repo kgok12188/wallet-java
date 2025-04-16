@@ -35,8 +35,7 @@ CREATE TABLE `withdraw_to_cold_address` (
 @Setter
 @Getter
 @TableName("withdraw_to_cold_address")
-
-public class WithdrawToColdAddress implements CalcFingerprint {
+public class WithdrawToColdAddress implements CalcFingerprint<Integer> {
     @TableId(value = "id", type = IdType.AUTO)
     private Integer id;
     private Integer walletId;

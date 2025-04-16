@@ -1,9 +1,13 @@
 package com.tk.chains.event;
 
 import com.tk.wallet.common.entity.ChainTransaction;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.List;
 
+@Setter
+@Getter
 public class TransactionEvent extends Event {
     private String chainId;
     private ChainTransaction chainTransaction;
@@ -15,27 +19,4 @@ public class TransactionEvent extends Event {
         this.chainTransactions = chainTransactions;
     }
 
-    public String getChainId() {
-        return chainId;
-    }
-
-    public void setChainId(String chainId) {
-        this.chainId = chainId;
-    }
-
-    public ChainTransaction getChainTransaction() {
-        return chainTransaction;
-    }
-
-    public void setChainTransaction(ChainTransaction chainTransaction) {
-        this.chainTransaction = chainTransaction;
-    }
-
-    public List<ChainTransaction> getChainTransactions() {
-        return chainTransactions;
-    }
-
-    public void setChainTransactions(List<ChainTransaction> chainTransactions) {
-        this.chainTransactions = chainTransactions;
-    }
 }

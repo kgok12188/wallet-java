@@ -2,8 +2,10 @@ package com.tk.proxy.api.controller;
 
 import com.alibaba.fastjson.JSONObject;
 import com.tk.wallet.common.entity.ChainScanConfig;
+import com.tk.wallet.common.entity.WalletAddress;
 import com.tk.wallet.common.service.AddressService;
 import com.tk.wallet.common.service.ChainScanConfigService;
+import com.tk.wallet.common.service.WalletAddressService;
 import com.tk.wallet.common.vo.R;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -23,6 +25,8 @@ public class AddressController {
     private AddressService addressService;
     @Autowired
     private ChainScanConfigService chainScanConfigService;
+    @Autowired
+    private WalletAddressService walletAddressService;
 
 
     @PostMapping("/get")
@@ -30,6 +34,7 @@ public class AddressController {
     @ApiImplicitParams({
             @ApiImplicitParam(value = "appId", example = "实例id"),
             @ApiImplicitParam(value = "chain", example = "链"),
+            @ApiImplicitParam(value = "uid", example = "商户的uid"),
             @ApiImplicitParam(value = "sign", example = "签名"),
             @ApiImplicitParam(value = "time", example = "时间戳")
     })
@@ -39,6 +44,13 @@ public class AddressController {
             return R.fail("appId is null");
         }
         String chain = params.getString("chain");
+        Long uid = params.getLong("uid");
+        if (uid != null && uid > 0) {
+            WalletAddress walletAddress = walletAddressService.lambdaQuery().eq(WalletAddress::getUid, uid).eq(WalletAddress::getBaseSymbol, chain).one();
+            if (walletAddress != null) {
+                return R.success(walletAddress.getAddress());
+            }
+        }
         if (StringUtils.isBlank(chain)) {
             return R.fail("chain is null");
         }
@@ -46,7 +58,7 @@ public class AddressController {
         if (one == null || StringUtils.isBlank(one.getAddressUrl())) {
             return R.fail("chain is not exist");
         }
-        String address = addressService.getAndSaveAddress(appId, chain, one);
+        String address = addressService.getAndSaveAddress(appId, chain, one, uid);
         return R.success(address);
     }
 

@@ -7,6 +7,7 @@ import com.tk.chains.event.TransactionEvent;
 import com.tk.chains.event.UpdatePendingStatusTransactionEvent;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
+import com.tk.wallet.common.fingerprint.CalcFingerprintService;
 import com.tk.wallet.common.mapper.ChainTransactionMapper;
 import com.tk.wallet.common.service.ChainTransactionService;
 import org.apache.commons.collections.CollectionUtils;
@@ -31,6 +32,8 @@ public class BlockTransactionManager {
 
     @Autowired
     protected EventManager eventManager;
+    @Autowired
+    private CalcFingerprintService calcFingerprintService;
 
     @Transactional
     public void saveBlock(ChainScanConfig chainScanConfig, BlockChain.ScanResult scanResult, boolean merge, BlockChain<?> blockChain) throws Exception {
@@ -80,6 +83,7 @@ public class BlockTransactionManager {
         }
         if (transaction == null) {
             chainTransactionService.save(chainTransaction);
+            calcFingerprintService.calcFingerprint(chainTransaction, chainTransactionService, new ChainTransaction());
             if (eventManager != null) {
                 eventManager.emit(new TransactionEvent(chainTransaction.getChainId(), chainTransaction, null));
             }
