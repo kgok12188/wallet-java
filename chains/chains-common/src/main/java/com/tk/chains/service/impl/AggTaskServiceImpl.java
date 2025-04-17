@@ -455,7 +455,8 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
                                 .eq(WalletSymbolConfig::getAggPolice, 0)
                                 .list();
                         List<Integer> symbolIdList = list.stream().filter(item -> Objects.equals(item.getAggPolice(), 0)).map(WalletSymbolConfig::getSymbolConfigId).collect(Collectors.toList());
-                        log.info("autoAgg : {},\t{},\t{},\t{}", chainScanConfig.getChainId(), walletId, symbolIdList, symbolIdList.size());
+                        List<String> symbolList = symbolConfigService.lambdaQuery().in(SymbolConfig::getId, symbolIdList).list().stream().map(SymbolConfig::getSymbol).collect(Collectors.toList());
+                        log.info("autoAgg : {},\t{},\t{},\t{}", chainScanConfig.getChainId(), walletId, symbolList, symbolIdList.size());
                         List<SymbolConfig> contractList = symbolConfigService.lambdaQuery().in(SymbolConfig::getId, symbolIdList).list();
                         if (CollectionUtils.isEmpty(contractList)) {
                             continue;

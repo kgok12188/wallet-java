@@ -95,8 +95,13 @@ public class ChainScanConfig {
 
     private String jsonConfig; // 自定义配置
 
-    public boolean isSingleThread() {
-        return new BigDecimal(blockHeight).subtract(new BigDecimal(blockNumber)).compareTo(new BigDecimal(unScanBlock)) <= 0;
+
+    public boolean checkScan() {
+        BigInteger blockNumber = getBlockNumber();
+        BigInteger blockHeight = getBlockHeight();
+        Integer delayBlocks = getDelayBlocks();
+        BigInteger lastBlock = blockHeight.subtract(new BigInteger(delayBlocks + ""));
+        return lastBlock.compareTo(blockNumber) > 0;
     }
 
 }

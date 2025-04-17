@@ -186,6 +186,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
      * @param transactionReceipt 链上状态
      * @param chainTransaction   交易
      */
+    @SuppressWarnings("all")
     private void updateStatusAndGas(Optional<TransactionReceipt> transactionReceipt, ChainTransaction chainTransaction) {
         if (transactionReceipt.isPresent()) {
             chainTransaction.setActGas(new BigDecimal(new BigInteger(transactionReceipt.get().getEffectiveGasPrice().substring(2), 16).multiply(transactionReceipt.get().getGasUsed())));

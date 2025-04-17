@@ -30,6 +30,8 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
@@ -42,6 +44,11 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
 
     protected Logger log = LoggerFactory.getLogger(this.getClass());
 
+    private static final int nThread = Runtime.getRuntime().availableProcessors() * 3;
+
+    private static final AtomicInteger scanMultiIndex = new AtomicInteger(1);
+
+    protected static volatile ThreadPoolExecutor threadPoolExecutor;
 
     @Value("${log.inv:60000}")
     protected long logInv;
@@ -144,13 +151,80 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         this.chainTransactionService = applicationContext.getBean(ChainTransactionService.class);
     }
 
-
-    public void scanMultiThread(ChainScanConfig chainScanConfig, Supplier<Boolean> supplier, int deep) {
-
+    public void scanMultiThread(ChainScanConfig chainScanConfig, Supplier<Boolean> supplier) {
+        if (threadPoolExecutor == null) {
+            synchronized (BlockChain.class) {
+                if (threadPoolExecutor == null) {
+                    threadPoolExecutor = new ThreadPoolExecutor(nThread, nThread, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), r -> new Thread(r, "scanMulti-" + scanMultiIndex.getAndIncrement()));
+                }
+            }
+        }
+        Integer multiThreadNumbers = chainScanConfig.getMultiThreadNumbers();
+        multiThreadNumbers = multiThreadNumbers == null ? 2 : multiThreadNumbers;
+        BigInteger blockNumber = chainScanConfig.getBlockNumber();
+        BigInteger blockHeight = chainScanConfig.getBlockHeight();
+        Integer delayBlocks = chainScanConfig.getDelayBlocks();
+        BigInteger lastBlock = blockHeight.subtract(new BigInteger(delayBlocks + ""));
+        int size = multiThreadNumbers * 3 * getChainClients().size();
+        List<BigInteger> batchBlockNumbers = new ArrayList<>(size);
+        while (lastBlock.compareTo(blockNumber) > 0) {
+            blockNumber = blockNumber.add(new BigInteger("1"));
+            batchBlockNumbers.add(blockNumber);
+            if (batchBlockNumbers.size() >= size) {
+                if (setScanMultiIndex(batchBlockNumbers, chainScanConfig)) {
+                    if (supplier != null && supplier.get()) {
+                        log.info("stop_chain_2 : {}", getChainId());
+                        return;
+                    }
+                    batchBlockNumbers = new ArrayList<>(size);
+                } else {
+                    return;
+                }
+            }
+        }
+        if (CollectionUtils.isNotEmpty(batchBlockNumbers)) {
+            setScanMultiIndex(batchBlockNumbers, chainScanConfig);
+        }
     }
 
-    public void scanMultiThread(ChainScanConfig chainScanConfig, Supplier<Boolean> supplier) {
-        scanMultiThread(chainScanConfig, supplier, 0);
+    private boolean setScanMultiIndex(List<BigInteger> batchBlockNumbers, ChainScanConfig chainScanConfig) {
+        CountDownLatch countDownLatch = new CountDownLatch(batchBlockNumbers.size());
+        ConcurrentHashMap<BigInteger, ScanResult> scanResultMap = new ConcurrentHashMap<>();
+        for (BigInteger batchBlockNumber : batchBlockNumbers) {
+            threadPoolExecutor.execute(() -> {
+                try {
+                    ScanResult scanResult = scan(chainScanConfig, batchBlockNumber, getRandomChainClient());
+                    scanResultMap.put(batchBlockNumber, scanResult);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    countDownLatch.countDown();
+                }
+            });
+        }
+        try {
+            countDownLatch.await();
+        } catch (Exception e) {
+            return false;
+        }
+        for (BigInteger blockNumber : batchBlockNumbers) {
+            ScanResult scanResult = scanResultMap.get(blockNumber);
+            if (scanResult == null) {
+                log.warn("并发拉取区块部分成功 lastBlockNumber = {}", blockNumber);
+                return false;
+            }
+            try {
+                if (CollectionUtils.isNotEmpty(scanResult.getChainTransactions())) {
+                    log.info("保存交易 blockNumber = {},\t size = {}", blockNumber, scanResult.getChainTransactions().size());
+                    blockTransactionManager.saveBlock(chainScanConfig, scanResult, this.mergeSave(), this);
+                }
+                chainScanConfigService.updateBlockNumber(getChainId(), blockNumber);
+            } catch (Exception e) {
+                log.warn("saveBlock error {}", chainId, e);
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -175,6 +249,9 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         while (blockHeight.compareTo(blockNumber) > 0 && blockNumber.compareTo(blockHeight.subtract(new BigInteger(String.valueOf(delayBlocks)))) < 0) {
             if (supplier != null && supplier.get()) {
                 log.info("stop_chain_1 : {}", getChainId());
+                break;
+            }
+            if (block >= 100) { // 单次最大扫描次数
                 break;
             }
             ChainClient chainClient = getChainClient(null);
@@ -283,8 +360,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                         }
                     }
                 }
-            } else if (StringUtils.isNotBlank(chainTransaction.getHash()) && ChainTransaction.TX_STATUS.FAIL.name().equals(chainTransaction.getTxStatus()) &&
-                    chainTransaction.getActGas() != null && chainTransaction.getActGas().compareTo(BigDecimal.ZERO) > 0) { // 链上交易失败，需要计算手续费
+            } else if (StringUtils.isNotBlank(chainTransaction.getHash()) && ChainTransaction.TX_STATUS.FAIL.name().equals(chainTransaction.getTxStatus()) && chainTransaction.getActGas() != null && chainTransaction.getActGas().compareTo(BigDecimal.ZERO) > 0) { // 链上交易失败，需要计算手续费
                 BigDecimal actGas = chainTransaction.getActGas();
                 String gasAddress = chainTransaction.getGasAddress();
                 if (StringUtils.isNotBlank(gasAddress)) {
@@ -429,7 +505,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     /**
      * 交叉验证交易
      *
-     * @param chainScanConfig 链配置
+     * @param chainScanConfig  链配置
      * @param chainTransaction 交易
      */
     public abstract void confirmTransaction(ChainScanConfig chainScanConfig, ChainTransaction chainTransaction);
