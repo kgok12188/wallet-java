@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.tk.chains.BlockChain;
 import com.tk.chains.event.ChainEventListener;
 import com.tk.chains.event.Event;
@@ -114,7 +115,7 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
                 queryChainWrapper.in(WalletAddress::getAddress, addresses);
             }
             List<WalletAddress> walletAddresses = queryChainWrapper.eq(WalletAddress::getWalletId, walletId)
-                    .notIn(WalletAddress::getAddress, Lists.newArrayList(gasAddress, targetAddress))
+                    .notIn(WalletAddress::getAddress, Sets.newHashSet(gasAddress, targetAddress))
                     .inSql(WalletAddress::getAddress, "select address from coin_balance where balance > 0")
                     .gt(WalletAddress::getId, start)
                     .orderByAsc(WalletAddress::getId).last(" limit " + limit).list();
