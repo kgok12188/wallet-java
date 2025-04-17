@@ -427,10 +427,10 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
      *
      * @param chainScanConfig 链配置
      * @param blockNumber     区块高度
-     * @return block读取的行数，返回0 不会扫描下一个区块
+     *                        block读取的行数，返回0 不会扫描下一个区块
      */
-    public ScanResult scan(ChainScanConfig chainScanConfig, BigInteger blockNumber) throws Exception {
-        return scan(chainScanConfig, blockNumber, getRandomChainClient());
+    public void scan(ChainScanConfig chainScanConfig, BigInteger blockNumber) throws Exception {
+        scan(chainScanConfig, blockNumber, getRandomChainClient());
     }
 
     /**

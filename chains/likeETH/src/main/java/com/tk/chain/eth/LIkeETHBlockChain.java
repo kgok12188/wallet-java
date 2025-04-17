@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.google.common.collect.Lists;
 import com.tk.chains.BlockChain;
+import com.tk.chains.event.TransactionEvent;
 import com.tk.chains.exceptions.GasException;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
@@ -519,6 +520,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 blockTransactionManager.updateTxStatus(transaction.getId(), ChainTransaction.TX_STATUS.FAIL.name(), null, "", chainScanConfig.getBlockHeight(), true);
                 return;
             }
+
             //发送交易
             EthSendTransaction ethSendTransaction = null;
             log.info("start_reTransfer_0 : id={},\tBusinessId={},\tchainInfo={}", transaction.getId(), transaction.getBusinessId(), transaction.getChainInfo());
@@ -533,10 +535,36 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             if (ethSendTransaction == null || ethSendTransaction.hasError()) {
                 String errorMessage = ethSendTransaction == null ? "" : ethSendTransaction.getError().getMessage();
                 if (StringUtils.equals("already known", errorMessage) || StringUtils.startsWith(errorMessage, "nonce too low: next nonce")) {
+                    List<ChainTransaction> list = chainTransactionService.lambdaQuery().eq(ChainTransaction::getNonce, transaction.getNonce())
+                            .eq(ChainTransaction::getChainId, transaction.getChainId()).eq(ChainTransaction::getFromAddress, transaction.getFromAddress())
+                            .ne(ChainTransaction::getId, transaction.getId()).list();
+
+                    long count = list.stream().filter(
+                            f ->
+                                    StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name())
+                                            || (StringUtils.isNotBlank(f.getHash()) && StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name()))
+                                            || (StringUtils.isNotBlank(f.getHash()) && StringUtils.isNotBlank(f.getFailCode()))
+                    ).count();
+                    if (count > 0) {
+                        ChainTransaction update = new ChainTransaction();
+                        update.setId(transaction.getId());
+                        update.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+                        update.setNonce(new BigInteger("0"));
+                        chainTransactionService.updateById(update);
+                        eventManager.emit(new TransactionEvent(chainScanConfig.getChainId(), transaction, null));
+                    } else {
+                        ChainTransaction update = new ChainTransaction();
+                        update.setId(transaction.getId());
+                        update.setTxStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
+                        chainTransactionService.updateById(update);
+                    }
+                } else if (StringUtils.startsWith(errorMessage, "transaction underpriced")) {
                     ChainTransaction update = new ChainTransaction();
                     update.setId(transaction.getId());
-                    update.setTxStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
+                    update.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
                     chainTransactionService.updateById(update);
+                    transaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+                    eventManager.emit(new TransactionEvent(chainScanConfig.getChainId(), transaction, null));
                 } else {
                     log.error("4_ethSendRawTransaction : {},\t{}", transaction.getId(), errorMessage);
                     if (transaction.getErrorCount() < 5) {
@@ -571,12 +599,11 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         // 当前区块高度
         BigInteger blockHeight = new BigInteger(blockHeight(chainScanConfig));
         String fromAddress = chainTransactions.get(0).getFromAddress();
-        List<ChainTransaction> value = chainTransactions;
         BigInteger coinBalance = getBalanceOrigin(chainScanConfig, fromAddress, DefaultBlockParameterName.LATEST).toBigInteger();
         // 涉及到转账的token 余额
         HashMap<String, BigInteger> tokenBalances = new HashMap<>();
         // 涉及到转账的token 精度
-        for (ChainTransaction chainTransaction : value) {
+        for (ChainTransaction chainTransaction : chainTransactions) {
             if (StringUtils.isNotBlank(chainTransaction.getContract())) {
                 if (!tokenBalances.containsKey(chainTransaction.getContract())) {
                     BigDecimal erc20Balance = getERC20BalanceOrigin(chainScanConfig, fromAddress, chainTransaction.getContract(), DefaultBlockParameterName.LATEST);
@@ -584,7 +611,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 }
             }
         }
-        LinkedList<ChainTransaction> chainTransactionLinkedList = new LinkedList<>(value);
+        LinkedList<ChainTransaction> chainTransactionLinkedList = new LinkedList<>(chainTransactions);
         Iterator<ChainTransaction> iterator = chainTransactionLinkedList.iterator();
         while (iterator.hasNext()) {
             ChainTransaction chainTransaction = iterator.next();
@@ -726,8 +753,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             }
         }
         if (CollectionUtils.isNotEmpty(okList)) {
-            for (int i = 0; i < okList.size(); i++) {
-                ChainTransaction transaction = okList.get(i);
+            for (ChainTransaction transaction : okList) {
                 // 签名
                 String hexValue;
                 try {
