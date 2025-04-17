@@ -66,10 +66,11 @@ VALUES ('ETH', 'ERC20-USDT', 2, '0xe70252bb07dea8d3362b58e77476366855a125a4', 1,
 
 
 
-replace into symbol_config(base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
-                           token_symbol)
-values ('BSC', 'BNB', 1, '', 1, now(), now(), 18, 'BNB');
+replace into symbol_config(id,base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
+                           token_symbol,config_json)
+values (15,'BSC', 'BNB', 1, '', 1, now(), now(), 18, 'BNB','{\"limit\":210000,\"gas\":\"0.0015\"}');
 
-replace into symbol_config(base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
-                           token_symbol)
-values ('BSC', 'BEP20-USDT', 1, '0x01bc06b31e9bd4ca058cd4982a9241321c08a363', 1, now(), now(), 18, 'USDT');
+replace into symbol_config(id,base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
+                           token_symbol,config_json)
+values (16,'BSC', 'BEP20-USDT', 1, '0x01bc06b31e9bd4ca058cd4982a9241321c08a363', 1, now(), now(), 18, 'USDT','{\"limit\":60000,\"gas\":\"0.0015\"}');
+
