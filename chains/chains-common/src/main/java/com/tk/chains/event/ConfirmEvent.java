@@ -7,12 +7,12 @@ import java.math.BigInteger;
 
 @Setter
 @Getter
-public class UpdatePendingStatusTransactionEvent extends Event {
+public class ConfirmEvent extends Event {
     private String chainId;
     private BigInteger blockHeight;
 
 
-    public UpdatePendingStatusTransactionEvent(String chainId, BigInteger blockHeight) {
+    public ConfirmEvent(String chainId, BigInteger blockHeight) {
         this.chainId = chainId;
         this.blockHeight = blockHeight;
     }

@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tk.chains.BlockChain;
 import com.tk.chains.event.EventManager;
 import com.tk.chains.event.TransactionEvent;
-import com.tk.chains.event.UpdatePendingStatusTransactionEvent;
+import com.tk.chains.event.ConfirmEvent;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
 import com.tk.wallet.common.fingerprint.CalcFingerprintService;
@@ -149,7 +149,7 @@ public class BlockTransactionManager {
         return CollectionUtils.isNotEmpty(ids);
     }
 
-    public List<Long> queryPendingChainTransaction(UpdatePendingStatusTransactionEvent event) {
+    public List<Long> queryPendingChainTransaction(ConfirmEvent event) {
         return chainTransactionMapper.queryPendingChainTransaction(event.getChainId(), event.getBlockHeight(), 100);
     }
 

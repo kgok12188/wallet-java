@@ -81,6 +81,37 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         return configHashMap.get(contractAddress.toLowerCase());
     }
 
+    @SuppressWarnings("all")
+    private ChainTransaction erc20LogResult(EthLog.LogResult<EthLog.LogObject> logResult, ChainClient chainClient, BigInteger blockNumber, Date blockTime) {
+        EthLog.LogObject logObject = logResult.get();
+        if (logObject != null && CollectionUtils.isNotEmpty(logObject.getTopics()) && logObject.getTopics().size() == 3 && logObject.getTopics().get(0).equals(topic)) {
+            String hash = logObject.getTransactionHash();
+            String contract = logObject.getAddress().toLowerCase();
+            String from = "0x" + logObject.getTopics().get(1).substring(26).toLowerCase();
+            String to = "0x" + logObject.getTopics().get(2).substring(26).toLowerCase();
+            BigInteger amount = new BigInteger(logObject.getData().substring(2), 16);
+            if (this.configHashMap.containsKey(contract) && addressChecker.owner(from, to, chainId, hash)) {
+                SymbolConfig symbolConfig = this.configHashMap.get(contract);
+                ChainTransaction chainTransaction = new ChainTransaction();
+                chainTransaction.setHash(hash);
+                chainTransaction.setContract(contract);
+                chainTransaction.setFromAddress(from);
+                chainTransaction.setToAddress(to);
+                chainTransaction.setChainId(chainId);
+                chainTransaction.setAmount(new BigDecimal(amount).divide(symbolConfig.precision(), 18, RoundingMode.DOWN));
+                chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.PENDING.name());
+                chainTransaction.setBlockNum(blockNumber);
+                chainTransaction.setNeedConfirmNum(this.mainCoinConfig.getConfirmCount());
+                chainTransaction.setBlockTime(blockTime);
+                chainTransaction.setUrlCode(chainClient.getUrl());
+                chainTransaction.setTokenSymbol(symbolConfig.getTokenSymbol());
+                chainTransaction.setSymbol(symbolConfig.getSymbol());
+                return chainTransaction;
+            }
+        }
+        return null;
+    }
+
     @Override
     @SuppressWarnings("all")
     public ScanResult scan(ChainScanConfig chainScanConfig, BigInteger blockNumber, ChainClient chainClient) throws Exception {
@@ -98,34 +129,11 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         if (CollectionUtils.isNotEmpty(logs)) {
             gotLog = true;
             for (EthLog.LogResult<EthLog.LogObject> logResult : logs) {
-                EthLog.LogObject logObject = logResult.get();
-                if (logObject != null && CollectionUtils.isNotEmpty(logObject.getTopics()) && logObject.getTopics().size() == 3 &&
-                        logObject.getTopics().get(0).equals(topic)) {
-                    String hash = logObject.getTransactionHash();
-                    String contract = logObject.getAddress().toLowerCase();
-                    String from = "0x" + logObject.getTopics().get(1).substring(26).toLowerCase();
-                    String to = "0x" + logObject.getTopics().get(2).substring(26).toLowerCase();
-                    BigInteger amount = new BigInteger(logObject.getData().substring(2), 16);
-                    if (this.configHashMap.containsKey(contract) && addressChecker.owner(from, to, chainId, hash)) {
-                        SymbolConfig symbolConfig = this.configHashMap.get(contract);
-                        ChainTransaction chainTransaction = new ChainTransaction();
-                        chainTransaction.setHash(hash);
-                        chainTransaction.setContract(contract);
-                        chainTransaction.setFromAddress(from);
-                        chainTransaction.setToAddress(to);
-                        chainTransaction.setChainId(chainId);
-                        chainTransaction.setAmount(new BigDecimal(amount).divide(symbolConfig.precision(), 18, RoundingMode.DOWN));
-                        chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.PENDING.name());
-                        chainTransaction.setBlockNum(blockNumber);
-                        chainTransaction.setNeedConfirmNum(this.mainCoinConfig.getConfirmCount());
-                        chainTransaction.setBlockTime(blockTime);
-                        chainTransaction.setUrlCode(chainClient.getUrl());
-                        chainTransaction.setCoin(symbolConfig.getTokenSymbol());
-                        chainTransaction.setApiCoin(symbolConfig.getSymbol());
-                        List<ChainTransaction> chainTransactions = chainTransactionsMap.getOrDefault(contract, new ArrayList<>());
-                        chainTransactions.add(chainTransaction);
-                        chainTransactionsMap.put(chainTransaction.getHash(), chainTransactions);
-                    }
+                ChainTransaction chainTransaction = erc20LogResult(logResult, chainClient, blockNumber, blockTime);
+                if (chainTransaction != null) {
+                    List<ChainTransaction> chainTransactions = chainTransactionsMap.getOrDefault(chainTransaction.getContract(), new ArrayList<>());
+                    chainTransactions.add(chainTransaction);
+                    chainTransactionsMap.put(chainTransaction.getHash(), chainTransactions);
                 }
             }
         }
@@ -201,6 +209,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
                 chainTransaction.setFailCode(ChainTransaction.FAIL_CODE.OUT_OF_GAS.name());
             }
+            chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
         } else {
             chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
             chainTransaction.setFailCode(ChainTransaction.FAIL_CODE.CHAIN_NOT_FOUND.name());
@@ -237,7 +246,8 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 chainTransaction.setHash(transactionObject.getHash());
                 chainTransaction.setContract(transactionObject.getTo());
                 chainTransaction.setGasAddress(transactionObject.getFrom());
-                chainTransaction.setCoin(coinConfig.getSymbol());
+                chainTransaction.setTokenSymbol(coinConfig.getTokenSymbol());
+                chainTransaction.setSymbol(coinConfig.getSymbol());
                 chainTransaction.setNonce(transactionObject.getNonce());
                 return chainTransaction;
             } catch (Exception e) {
@@ -252,7 +262,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
      *
      * @param transactionObject 链上状态
      * @param coinConfig        币种配置
-     * @return 交易嘻嘻
+     * @return 交易
      */
     private ChainTransaction coin(Transaction transactionObject, SymbolConfig coinConfig) {
         BigDecimal amount = Convert.fromWei(transactionObject.getValue().toString(), getConvertUnit(coinConfig.getSymbolPrecision(), ""));
@@ -278,7 +288,8 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         chainTransaction.setToAddress(transactionObject.getTo());
         chainTransaction.setGasAddress(transactionObject.getFrom());
         chainTransaction.setAmount(amount);
-        chainTransaction.setCoin(this.mainCoinConfig.getSymbol());
+        chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
+        chainTransaction.setSymbol(this.mainCoinConfig.getSymbol());
         chainTransaction.setNonce(transactionObject.getNonce());
         return chainTransaction;
     }
@@ -356,6 +367,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
      * @return 交易信息
      */
     @Override
+    @SuppressWarnings("unchecked")
     public List<ChainTransaction> getChainTransaction(ChainScanConfig chainScanConfig, String hash, String excludeUrl) {
         List<ChainTransaction> chainTransactions = new ArrayList<>();
         ChainClient chainClient = getChainClient(null);
@@ -364,20 +376,27 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             Optional<TransactionReceipt> transactionReceiptOptional = chainClient.getClient().ethGetTransactionReceipt(hash).send().getTransactionReceipt();
             if (transactionOptional.isPresent() && transactionReceiptOptional.isPresent()) {
                 Transaction transaction = transactionOptional.get();
-                ChainTransaction chainTransaction;
+                ChainTransaction chainTransaction = null;
                 if (configHashMap.containsKey(transaction.getTo().toLowerCase())) {
-                    EthFilter ethFilter = new EthFilter(
-                            DefaultBlockParameter.valueOf(transaction.getBlockNumber()), DefaultBlockParameter.valueOf(transaction.getBlockNumber()),
-                            Lists.newArrayList(transaction.getFrom(), transaction.getTo())
-                    );
+                    EthFilter ethFilter = new EthFilter(DefaultBlockParameter.valueOf(transaction.getBlockNumber()), DefaultBlockParameter.valueOf(transaction.getBlockNumber()), Lists.newArrayList(transaction.getFrom()));
                     ethFilter.addSingleTopic(topic);
-                    chainClient.getClient().ethGetLogs(ethFilter);
-                    chainTransaction = erc20Token(transaction, this.configHashMap.get(transaction.getTo().toLowerCase()));
+                    EthLog ethLog = chainClient.getClient().ethGetLogs(ethFilter).send();
+                    if (ethLog != null && ethLog.getLogs() != null) {
+                        for (EthLog.LogResult<EthLog.LogObject> logResult : ethLog.getLogs()) {
+                            chainTransaction = erc20LogResult(logResult, chainClient, transactionOptional.get().getBlockNumber(), chainScanConfig.getLastBlockTime());
+                            if (chainTransaction != null) {
+                                chainTransactions.add(chainTransaction);
+                            }
+                        }
+                    } else {
+                        chainTransaction = erc20Token(transaction, this.configHashMap.get(transaction.getTo().toLowerCase()));
+                    }
                 } else {
                     chainTransaction = coin(transaction, this.mainCoinConfig);
                 }
                 if (chainTransaction != null) {
                     chainTransaction.setGas(new BigDecimal(transaction.getGasPrice().multiply(transaction.getGas())));
+                    chainTransaction.setBlockNum(transaction.getBlockNumber());
                     updateStatusAndGas(transactionReceiptOptional, chainTransaction);
                     chainTransactions.add(chainTransaction);
                 }
@@ -410,6 +429,11 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             log.error("chain = {}\tconfirmTransaction = {},\tnot found", getChainId(), chainTransaction.getHash());
             blockTransactionManager.updateTxStatus(chainTransaction.getChainId(), chainTransaction.getHash(), ChainTransaction.TX_STATUS.FAIL.name(), ChainTransaction.FAIL_CODE.CHAIN_NOT_FOUND.name(), null, chainTransaction.getId(), true);
         }
+    }
+
+
+    public String formatAddress(String address) {
+        return this.isValidTronAddress(address) ? address.toLowerCase() : "";
     }
 
     @Override
@@ -535,16 +559,9 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             if (ethSendTransaction == null || ethSendTransaction.hasError()) {
                 String errorMessage = ethSendTransaction == null ? "" : ethSendTransaction.getError().getMessage();
                 if (StringUtils.equals("already known", errorMessage) || StringUtils.startsWith(errorMessage, "nonce too low: next nonce")) {
-                    List<ChainTransaction> list = chainTransactionService.lambdaQuery().eq(ChainTransaction::getNonce, transaction.getNonce())
-                            .eq(ChainTransaction::getChainId, transaction.getChainId()).eq(ChainTransaction::getFromAddress, transaction.getFromAddress())
-                            .ne(ChainTransaction::getId, transaction.getId()).list();
+                    List<ChainTransaction> list = chainTransactionService.lambdaQuery().eq(ChainTransaction::getNonce, transaction.getNonce()).eq(ChainTransaction::getChainId, transaction.getChainId()).eq(ChainTransaction::getFromAddress, transaction.getFromAddress()).ne(ChainTransaction::getId, transaction.getId()).list();
 
-                    long count = list.stream().filter(
-                            f ->
-                                    StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name())
-                                            || (StringUtils.isNotBlank(f.getHash()) && StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name()))
-                                            || (StringUtils.isNotBlank(f.getHash()) && StringUtils.isNotBlank(f.getFailCode()))
-                    ).count();
+                    long count = list.stream().filter(f -> StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name()) || (StringUtils.isNotBlank(f.getHash()) && StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name())) || (StringUtils.isNotBlank(f.getHash()) && StringUtils.isNotBlank(f.getFailCode()))).count();
                     if (count > 0) {
                         ChainTransaction update = new ChainTransaction();
                         update.setId(transaction.getId());
@@ -907,7 +924,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         if (CollectionUtils.isNotEmpty(coinConfigs)) {
             for (SymbolConfig coinConfig : coinConfigs) {
                 if (StringUtils.isNotBlank(coinConfig.getContractAddress())) {
-                    configHashMap.put(coinConfig.getContractAddress().toLowerCase(), coinConfig);
+                    configHashMap.put(this.formatAddress(coinConfig.getContractAddress()), coinConfig);
                 }
             }
         }

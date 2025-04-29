@@ -171,7 +171,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
             blockNumber = blockNumber.add(new BigInteger("1"));
             batchBlockNumbers.add(blockNumber);
             if (batchBlockNumbers.size() >= size) {
-                if (setScanMultiIndex(batchBlockNumbers, chainScanConfig)) {
+                if (batchScan(batchBlockNumbers, chainScanConfig)) {
                     if (supplier != null && supplier.get()) {
                         log.info("stop_chain_2 : {}", getChainId());
                         return;
@@ -183,11 +183,11 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
             }
         }
         if (CollectionUtils.isNotEmpty(batchBlockNumbers)) {
-            setScanMultiIndex(batchBlockNumbers, chainScanConfig);
+            batchScan(batchBlockNumbers, chainScanConfig);
         }
     }
 
-    private boolean setScanMultiIndex(List<BigInteger> batchBlockNumbers, ChainScanConfig chainScanConfig) {
+    private boolean batchScan(List<BigInteger> batchBlockNumbers, ChainScanConfig chainScanConfig) {
         CountDownLatch countDownLatch = new CountDownLatch(batchBlockNumbers.size());
         ConcurrentHashMap<BigInteger, ScanResult> scanResultMap = new ConcurrentHashMap<>();
         for (BigInteger batchBlockNumber : batchBlockNumbers) {
@@ -196,7 +196,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                     ScanResult scanResult = scan(chainScanConfig, batchBlockNumber, getRandomChainClient());
                     scanResultMap.put(batchBlockNumber, scanResult);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    log.error("batchScan {}", batchBlockNumber, e);
                 } finally {
                     countDownLatch.countDown();
                 }

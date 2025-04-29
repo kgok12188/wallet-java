@@ -2,7 +2,7 @@ package com.tk.chains;
 
 import com.tk.chains.event.BlockHeightUpdate;
 import com.tk.chains.event.EventManager;
-import com.tk.chains.event.UpdatePendingStatusTransactionEvent;
+import com.tk.chains.event.ConfirmEvent;
 import com.tk.chains.service.AggTaskService;
 import com.tk.chains.service.BlockTransactionManager;
 import com.tk.chains.service.ChainJobManager;
@@ -166,7 +166,7 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
                         }
                         boolean hasPendingTransaction = blockTransactionManager.hasPendingChainTransaction(chainScanConfig.getChainId(), blockHeight);
                         if (hasPendingTransaction) {
-                            eventManager.emit(new UpdatePendingStatusTransactionEvent(chainScanConfig.getChainId(), blockHeight));
+                            eventManager.emit(new ConfirmEvent(chainScanConfig.getChainId(), blockHeight));
                         }
                         eventManager.emit(new BlockHeightUpdate(chainScanConfig.getChainId(), blockHeight));
                     }
@@ -200,8 +200,8 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
                     chainTransaction.setAmount(walletWithdraw.getAmount());
 
                     SymbolConfig symbolConfig = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId()).eq(SymbolConfig::getSymbol, walletWithdraw.getSymbol()).one();
-                    chainTransaction.setApiCoin(symbolConfig.getSymbol());
-                    chainTransaction.setCoin(symbolConfig.getTokenSymbol());
+                    chainTransaction.setTokenSymbol(symbolConfig.getTokenSymbol());
+                    chainTransaction.setSymbol(symbolConfig.getSymbol());
                     chainTransaction.setContract(symbolConfig.getContractAddress());
                     chainTransaction.setGasConfig(symbolConfig.getConfigJson());
 
@@ -282,9 +282,9 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
             return;
         }
         String[] chainList = chainIds.trim().split(",");
-        chainScanConfigService.taskUpdateTime(chainJobManager.getTaskId());
+        chainScanConfigService.taskUpdateTime(chainJobManager.getTaskId(), chainIds);
         // 清理下线的jvm,并返回当前运行的jvm 个数
-        Integer hosts = chainScanConfigService.hosts();
+        Integer hosts = chainScanConfigService.hosts(chainIds);
         List<ChainScanConfig> chainScanConfigs = chainScanConfigService.lambdaQuery().eq(ChainScanConfig::getStatus, 1).in(ChainScanConfig::getChainId, Arrays.asList(chainList)).orderByAsc(ChainScanConfig::getChainId).list();
         int max = (chainScanConfigs.size() / hosts) + 1;
         int current = (int) chainScanConfigs.stream().filter(item -> StringUtils.equals(chainJobManager.getTaskId(), item.getTaskId())).count();

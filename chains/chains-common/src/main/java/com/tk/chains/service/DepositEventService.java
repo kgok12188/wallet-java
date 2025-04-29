@@ -50,7 +50,7 @@ public class DepositEventService implements ChainEventListener {
                         walletDeposit.setContract(chainTransaction.getContract());
                         walletDeposit.setAmount(chainTransaction.getAmount());
                         walletDeposit.setBaseSymbol(chainTransaction.getChainId());
-                        walletDeposit.setSymbol(chainTransaction.getCoin());
+                        walletDeposit.setSymbol(chainTransaction.getSymbol());
                         walletDeposit.setNoticeStatus(WalletDeposit.NotifyStatus.INIT.ordinal());
                         walletDeposit.setTxid(chainTransaction.getHash());
                         walletDeposit.setWalletId(walletAddress.getWalletId());

@@ -1,0 +1,9 @@
+### GET request to example server
+POST localhost:9901/transaction/loadHash
+content-type: application/json
+
+{
+  "chainId": "BSC",
+  "hash": "0x14f616e56831709e338a9124b9b3844f000e93f805159b0eceacb10604e81af2"
+}
+###

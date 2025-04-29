@@ -1,7 +1,12 @@
 package com.tk.chains.event;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.math.BigInteger;
 
+@Setter
+@Getter
 public class BlockHeightUpdate extends Event {
     private String chainId;
     private BigInteger blockHeight;
@@ -11,19 +16,4 @@ public class BlockHeightUpdate extends Event {
         this.blockHeight = blockHeight;
     }
 
-    public String getChainId() {
-        return chainId;
-    }
-
-    public void setChainId(String chainId) {
-        this.chainId = chainId;
-    }
-
-    public BigInteger getBlockHeight() {
-        return blockHeight;
-    }
-
-    public void setBlockHeight(BigInteger blockHeight) {
-        this.blockHeight = blockHeight;
-    }
 }

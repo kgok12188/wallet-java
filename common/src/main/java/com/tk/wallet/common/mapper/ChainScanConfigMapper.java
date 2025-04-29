@@ -21,11 +21,11 @@ public interface ChainScanConfigMapper extends BaseMapper<ChainScanConfig> {
     @Update("update chain_scan_config set task_update_time = now(),task_id = #{taskId}  where status = 1 and task_update_time < #{taskUpdateTime} and chain_id = #{chainId}")
     Integer updateTaskId(@Param("taskId") String taskId, @Param("chainId") String chainId, @Param("taskUpdateTime") Date taskUpdateTime);
 
-    @Insert("replace into chain_scan_hosts(task_id,update_time) values(#{taskId},now())")
-    Integer replaceChainScanHosts(@Param("taskId") String taskId);
+    @Insert("replace into chain_scan_hosts(task_id,chain_ids,update_time) values(#{taskId}, #{chainIds}, now())")
+    Integer replaceChainScanHosts(@Param("taskId") String taskId, @Param("chainIds") String chain_ids);
 
-    @Select("select count(1) from chain_scan_hosts")
-    Integer hosts();
+    @Select("select count(1) from chain_scan_hosts where chain_ids = #{chainIds}")
+    Integer hosts(@Param("chainIds") String chain_ids);
 
     @Delete("delete from chain_scan_hosts where update_time < #{date}")
     Integer deleteLostHost(@Param("date") Date date);

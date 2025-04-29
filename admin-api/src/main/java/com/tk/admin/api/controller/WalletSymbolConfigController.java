@@ -11,6 +11,7 @@ import com.tk.wallet.common.service.WalletSymbolConfigService;
 import com.tk.wallet.common.vo.R;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +33,7 @@ public class WalletSymbolConfigController {
     private CalcFingerprintService calcFingerprintService;
 
     @PostMapping("/add")
+    @Transactional
     public R<Boolean> add(@RequestBody WalletSymbolConfig walletSymbolConfig) {
         walletSymbolConfig.setId(null);
         WalletSymbolConfig dbConfig = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getWalletId, walletSymbolConfig.getWalletId())

@@ -19,6 +19,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -444,7 +445,8 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                             chainTransaction.setToAddress(toAddress);
                             chainTransaction.setGasAddress(fromAddress);
                             chainTransaction.setAmount(amount);
-                            chainTransaction.setCoin(mainCoinConfig.getSymbol());
+                            chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
+                            chainTransaction.setSymbol(mainCoinConfig.getSymbol());
                             chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
                             chainTransaction.setUrlCode(chainClient.getUrl());
                             chainTransaction.setBlockTime(blockTime);
@@ -513,11 +515,12 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                     chainTransaction.setChainId(getChainId());
                     chainTransaction.setToAddress(out.getJSONArray("addresses").get(0).toString());
                     chainTransaction.setFromAddress(fromAddress);
-                    chainTransaction.setAmount(out.getBigDecimal("value").divide(mainCoinConfig.precision()));
+                    chainTransaction.setAmount(out.getBigDecimal("value").divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN));
                     chainTransaction.setHash(hash);
                     chainTransaction.setTxStatus(txStatus);
                     chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
-                    chainTransaction.setCoin(mainCoinConfig.getSymbol());
+                    chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
+                    chainTransaction.setSymbol(mainCoinConfig.getSymbol());
                     chainTransaction.setUrlCode(url);
                     chainTransactions.add(chainTransaction);
                     outputAmount = outputAmount.add(chainTransaction.getAmount());

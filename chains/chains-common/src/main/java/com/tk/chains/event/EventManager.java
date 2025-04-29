@@ -16,37 +16,26 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class EventManager implements BeanPostProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(EventManager.class);
 
+
+    private static final AtomicInteger index = new AtomicInteger(1);
+
+
     @Autowired
     private ApplicationContext applicationContext;
 
-    private List<ChainEventListener> chainEventListeners = new ArrayList<>();
+    private final List<ChainEventListener> chainEventListeners = new ArrayList<>();
 
-    private ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    private final static ExecutorService executorService = new ThreadPoolExecutor(Runtime.getRuntime().availableProcessors(), Runtime.getRuntime().availableProcessors(), 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), r -> new Thread(r, "event-" + index.getAndIncrement()));
 
     public void emit(Event event) {
-        if (event instanceof TransactionEvent) {
-            TransactionEvent transactionEvent = (TransactionEvent) event;
-            List<ChainTransaction> chainTransactions = transactionEvent.getChainTransactions();
-            if (CollectionUtils.isNotEmpty(chainTransactions)) {
-                for (ChainTransaction transaction : chainTransactions) {
-                    SetSymbol(transaction);
-                }
-            }
-
-            ChainTransaction chainTransaction = transactionEvent.getChainTransaction();
-            if (chainTransaction != null) {
-                SetSymbol(chainTransaction);
-            }
-
-        }
         if (CollectionUtils.isNotEmpty(chainEventListeners)) {
             for (ChainEventListener chainEventListener : chainEventListeners) {
                 executorService.execute(new Runnable() {
@@ -63,19 +52,9 @@ public class EventManager implements BeanPostProcessor {
         }
     }
 
-    private void SetSymbol(ChainTransaction chainTransaction) {
-        BlockChain<?> blockChain = applicationContext.getBean(chainTransaction.getChainId(), BlockChain.class);
-        if (StringUtils.isNotBlank(chainTransaction.getContract())) {
-            SymbolConfig tokenConfig = blockChain.getTokenConfig(chainTransaction.getContract());
-            chainTransaction.setApiCoin(tokenConfig.getSymbol());
-        } else {
-            chainTransaction.setApiCoin(blockChain.getMainCoinConfig().getSymbol());
-        }
-    }
-
     @Nullable
     public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
-        if ( bean instanceof ChainEventListener) {
+        if (bean instanceof ChainEventListener) {
             chainEventListeners.add((ChainEventListener) bean);
         }
         return bean;

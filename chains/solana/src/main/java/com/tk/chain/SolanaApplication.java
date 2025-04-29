@@ -1,4 +1,4 @@
-package com.tk.chain.sol;
+package com.tk.chain;
 
 import com.tk.chains.ScanChainBlock;
 import org.springframework.boot.SpringApplication;

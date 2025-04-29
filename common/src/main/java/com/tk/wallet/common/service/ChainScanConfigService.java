@@ -29,14 +29,14 @@ public class ChainScanConfigService extends ServiceImpl<ChainScanConfigMapper, C
         return this.getById(chainId);
     }
 
-    public void taskUpdateTime(String taskId) {
+    public void taskUpdateTime(String taskId, String chainIds) {
         this.baseMapper.taskUpdateTime(taskId);
-        this.baseMapper.replaceChainScanHosts(taskId);
+        this.baseMapper.replaceChainScanHosts(taskId, chainIds);
     }
 
-    public Integer hosts() {
+    public Integer hosts(String chainIds) {
         this.baseMapper.deleteLostHost(new Date(System.currentTimeMillis() - (60 * 1000)));
-        Integer hosts = this.baseMapper.hosts();
+        Integer hosts = this.baseMapper.hosts(chainIds);
         return (hosts == null || hosts < 1) ? 1 : hosts;
     }
 

@@ -20,9 +20,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Service
-public class UpdatePendingStatusTransactionChainEventListener implements ChainEventListener {
+public class ConfirmEventListener implements ChainEventListener {
 
-    private static final Logger log = LoggerFactory.getLogger(UpdatePendingStatusTransactionChainEventListener.class);
+    private static final Logger log = LoggerFactory.getLogger(ConfirmEventListener.class);
 
     @Autowired
     private BlockTransactionManager blockTransactionManager;
@@ -36,12 +36,12 @@ public class UpdatePendingStatusTransactionChainEventListener implements ChainEv
     @Autowired
     protected EventManager eventManager;
 
-    private ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     @Override
     public void process(Event event) {
-        if (event instanceof UpdatePendingStatusTransactionEvent) {
-            UpdatePendingStatusTransactionEvent heightUpdateEvent = (UpdatePendingStatusTransactionEvent) event;
+        if (event instanceof ConfirmEvent) {
+            ConfirmEvent heightUpdateEvent = (ConfirmEvent) event;
             ReentrantLock reentrantLock = locks.get(heightUpdateEvent.getChainId());
             if (reentrantLock == null) {
                 locks.putIfAbsent(heightUpdateEvent.getChainId(), new ReentrantLock());

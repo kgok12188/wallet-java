@@ -171,4 +171,8 @@ public class CoinBalanceService extends ServiceImpl<CoinBalanceMapper, CoinBalan
         } while (true);
     }
 
+    public void upsert(CoinBalance coinBalance) {
+        this.baseMapper.upsert(coinBalance);
+    }
+
 }

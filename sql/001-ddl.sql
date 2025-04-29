@@ -178,7 +178,7 @@ CREATE TABLE `coin_balance`
     `address`          varchar(200)             NOT NULL COMMENT '地址',
     `contract_address` varchar(200)             NOT NULL DEFAULT '' COMMENT '合约地址',
     `balance`          decimal(38, 19) unsigned NOT NULL COMMENT '余额',
-    `block_height`     int                      NOT NULL COMMENT '区块高度',
+    `block_height`     bigint(20)               NOT NULL COMMENT '区块高度',
     `block_time`       timestamp                NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '区块时间',
     `mtime`            timestamp                NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

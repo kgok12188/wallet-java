@@ -9,6 +9,8 @@ import com.tk.chains.exceptions.GasException;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
 import com.tk.wallet.common.entity.SymbolConfig;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -35,6 +37,7 @@ import org.tron.trident.utils.Base58Check;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -196,6 +199,7 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
     }
 
     @Override
+    @SuppressWarnings("all")
     public ScanResult scan(ChainScanConfig chainScanConfig, BigInteger blockNumber, BlockChain<TrxChainClient>.ChainClient chainClient) throws Exception {
         Response.BlockExtention block = chainClient.getClient().getBlock(blockNumber.longValue());
         List<Response.TransactionExtention> blockTransactions = block.getTransactionsList();
@@ -221,10 +225,11 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                     log.info("tron 查询到trx有充值交易：区块高度：{},充值地址：{},txId:{}", blockNumber, toAddress, hash);
                     BigDecimal amountDecimal = new BigDecimal(amount);
                     chainTransaction = new ChainTransaction();
-                    chainTransaction.setAmount(amountDecimal.divide(mainCoinConfig.precision()));
+                    chainTransaction.setAmount(amountDecimal.divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN));
                     chainTransaction.setFromAddress(ownerAddress);
                     chainTransaction.setToAddress(toAddress);
-                    chainTransaction.setCoin(mainCoinConfig.getSymbol());
+                    chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
+                    chainTransaction.setSymbol(mainCoinConfig.getSymbol());
                 }
             } else if (contract.getType().getNumber() == 31) { // trc-20
                 org.tron.trident.proto.Contract.TriggerSmartContract triggerSmartContract = org.tron.trident.proto.Contract.TriggerSmartContract.parseFrom(value);
@@ -247,9 +252,10 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                                 chainTransaction = new ChainTransaction();
                                 chainTransaction.setFromAddress(fromAddress);
                                 chainTransaction.setToAddress(checkAddress);
-                                chainTransaction.setAmount(tokenAmount.divide(coinConfig.precision()));
+                                chainTransaction.setAmount(tokenAmount.divide(coinConfig.precision(), 16, RoundingMode.DOWN));
                                 chainTransaction.setContract(contractAddress);
-                                chainTransaction.setCoin(coinConfig.getSymbol());
+                                chainTransaction.setTokenSymbol(coinConfig.getTokenSymbol());
+                                chainTransaction.setSymbol(coinConfig.getSymbol());
                             }
                         }
                     }
@@ -265,7 +271,7 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                 Response.TransactionInfo transactionInfo = chainClient.getClient().getTransactionInfoById(hash);
                 long fee = transactionInfo.getFee();
                 chainTransaction.setGasAddress(chainTransaction.getFromAddress());
-                chainTransaction.setActGas(new BigDecimal(fee).divide(mainCoinConfig.precision()));
+                chainTransaction.setActGas(new BigDecimal(fee).divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN));
                 Chain.Transaction.Result.contractResult contractRet = transaction.getTransaction().getRet(0).getContractRet();
                 if (Chain.Transaction.Result.contractResult.SUCCESS != contractRet) {
                     chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
@@ -323,8 +329,9 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                     chainTransaction = new ChainTransaction();
                     chainTransaction.setFromAddress(Base58Check.bytesToBase58(ownerAddress.toByteArray()));
                     chainTransaction.setToAddress(Base58Check.bytesToBase58(toAddress.toByteArray()));
-                    chainTransaction.setAmount(amountDecimal.divide(mainCoinConfig.precision()));
-                    chainTransaction.setCoin(mainCoinConfig.getSymbol());
+                    chainTransaction.setAmount(amountDecimal.divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN));
+                    chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
+                    chainTransaction.setSymbol(mainCoinConfig.getSymbol());
                 } catch (InvalidProtocolBufferException e) {
                     log.error("1 TransferContract.parseFrom", e);
                     throw new RuntimeException(e);
@@ -350,8 +357,9 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                         chainTransaction.setFromAddress(s1);
                         chainTransaction.setToAddress(toAddress.toString());
                         chainTransaction.setContract(s2);
-                        chainTransaction.setAmount(amountDecimal.divide(coinConfig.precision()));
-                        chainTransaction.setCoin(coinConfig.getSymbol());
+                        chainTransaction.setAmount(amountDecimal.divide(coinConfig.precision(), 16, RoundingMode.DOWN));
+                        chainTransaction.setTokenSymbol(coinConfig.getTokenSymbol());
+                        chainTransaction.setSymbol(coinConfig.getSymbol());
                     }
                 } catch (InvalidProtocolBufferException e) {
                     log.error("1 TransferContract.parseFrom", e);
@@ -399,10 +407,7 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
     @Override
     public void confirmTransaction(ChainScanConfig chainScanConfig, ChainTransaction chainTransaction) {
         List<ChainTransaction> chainTransactions = getChainTransaction(chainScanConfig, chainTransaction.getHash(), chainTransaction.getUrlCode());
-        if (CollectionUtils.isNotEmpty(chainTransactions) &&
-                (
-                        StringUtils.equals(chainTransactions.get(0).getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name()) || StringUtils.equals(chainTransactions.get(0).getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name())
-                )) {
+        if (CollectionUtils.isNotEmpty(chainTransactions) && (StringUtils.equals(chainTransactions.get(0).getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name()) || StringUtils.equals(chainTransactions.get(0).getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name()))) {
             blockTransactionManager.updateTxStatus(chainTransaction.getChainId(), chainTransaction.getHash(), ChainTransaction.TX_STATUS.SUCCESS.name(), null, null, chainTransaction.getId(), true);
         } else {
             log.error("chain = {}\tconfirmTransaction = {},\tnot found or error", getChainId(), chainTransaction.getHash());
@@ -443,15 +448,8 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
     // endpoint 配置
     @Override
     protected ChainClient create(JSONObject item) {
-        TrxChainClient trxChainClient = new TrxChainClient(
-                item.getString("url"), // grpcEndpoint
-                item.getString("grpcEndpointSolidity"),
-                item.getString("privateKey"),
-                item.getString("apiKey"),
-                item.getString("triggerSmartContract"),
-                item.getString("broadcastTransaction"),
-                item.getString("createTransaction")
-        );
+        TrxChainClient trxChainClient = new TrxChainClient(item.getString("url"), // grpcEndpoint
+                item.getString("grpcEndpointSolidity"), item.getString("privateKey"), item.getString("apiKey"), item.getString("triggerSmartContract"), item.getString("broadcastTransaction"), item.getString("createTransaction"));
         BlockChain<TrxChainClient>.ChainClient chainClient = new ChainClient(item.getString("url"), trxChainClient) {
             @Override
             public void close() throws IOException {
@@ -472,7 +470,9 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
     }
 
     class TrxChainClient {
-        private ApiWrapper apiWrapper;
+        private final ApiWrapper apiWrapper;
+        @Setter
+        @Getter
         private ChainClient chainClient;
         private final String triggerSmartContractUrl;
         private final String broadcastTransactionUrl;
@@ -494,14 +494,6 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
             return nowBlock.getBlockHeader().getRawData().getNumber();
         }
 
-        public ChainClient getChainClient() {
-            return chainClient;
-        }
-
-        public void setChainClient(ChainClient chainClient) {
-            this.chainClient = chainClient;
-        }
-
         public Response.BlockExtention getBlock(long dealBlockNum) throws IllegalException {
             Response.BlockListExtention blockByLimitNext = apiWrapper.getBlockByLimitNext(dealBlockNum, dealBlockNum + 1);
             Response.BlockExtention block = blockByLimitNext.getBlock(0);
@@ -509,8 +501,7 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
         }
 
         public Chain.Block getBlock() throws IllegalException {
-            Chain.Block nowBlock = apiWrapper.getNowBlock();
-            return nowBlock;
+            return apiWrapper.getNowBlock();
         }
 
         public Response.TransactionInfo getTransactionInfoById(String txID) throws Exception {

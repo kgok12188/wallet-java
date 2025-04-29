@@ -33,6 +33,18 @@ values ('ETH',
         'http://127.0.0.1:8080/eth/getAddress', '0', '0', 0, 0, '');
 
 
+
+replace into chain_scan_config (chain_id, endpoints, status, ctime, mtime, block_number, block_height, scan_time,
+                                task_id, task_update_time, un_scan_block, delay_blocks, block_interval, last_block_time,
+                                sign_url, address_url, address_symbol, multi_thread, multi_thread_numbers,
+                                retry_interval, json_config)
+values ('SOL',
+        '{"fields":{"url":"节点地址"},"value":[{"title":"地址1","url":"https://sol.nownodes.io/4e2966c3-bc74-40a8-883e-2edb4550c557","enable":true}]}',
+        '1', now(), now(), '0', '0', now(), '',
+        now(), 200, 0, 15, now(), 'http://127.0.0.1:8080/eth/sign',
+        'http://127.0.0.1:8080/eth/getAddress', '0', '0', 0, 0, '');
+
+
 replace into chain_scan_config (chain_id, endpoints, status, ctime, mtime, block_number, block_height, scan_time,
                                 task_id, task_update_time, un_scan_block, delay_blocks, block_interval, last_block_time,
                                 sign_url, address_url, address_symbol, multi_thread, multi_thread_numbers,
@@ -74,3 +86,8 @@ replace into symbol_config(id,base_symbol, symbol, confirm_count, contract_addre
                            token_symbol,config_json)
 values (16,'BSC', 'BEP20-USDT', 1, '0x01bc06b31e9bd4ca058cd4982a9241321c08a363', 1, now(), now(), 18, 'USDT','{\"limit\":60000,\"gas\":\"0.0015\"}');
 
+
+
+replace into symbol_config(id,base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
+                           token_symbol,config_json)
+values (17,'SOL', 'SOL', 1, '', 1, now(), now(), 8, 'SOL','{"gas":0.0005}');

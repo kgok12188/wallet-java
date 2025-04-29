@@ -67,11 +67,9 @@ public class ChainTransaction implements CalcFingerprint<Long> {
     // 1 可以自动加速确认交易
     private int autoSpeedUp;
     // 币种符号
-    private String coin;
+    private String symbol;//BEP20-USDT,ERC20-USDT
+    private String tokenSymbol; // USDT,USDC
 
-    // 币种符号
-    @TableField(exist = false)
-    private String apiCoin; // 交易所对接的
     //发起交易时的区块高度
     private BigInteger transferBlockNumber;
 
