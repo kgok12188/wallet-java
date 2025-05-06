@@ -20,6 +20,7 @@ public class BlockTx {
 
     private String parentHash;
 
+    // 秒
     private Long blockTime;
 
     private List<Transaction> txs;

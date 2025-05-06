@@ -74,7 +74,7 @@ public class AddressService {
             ResponseEntity<JSONObject> ret = restTemplate.postForEntity(addressUrl, new HashMap<>(), JSONObject.class);
             if (ret.getStatusCode().is2xxSuccessful() && ret.getBody() != null) {
                 String address = ret.getBody().getString("address");
-                if (uid > 0 && StringUtils.isNotBlank(chainScanConfig.getAddressSymbol())) {
+                if (uid > 0 && StringUtils.isNotBlank(chainScanConfig.getAddressSymbol()) && !StringUtils.equals(chainScanConfig.getChainId(), chainScanConfig.getAddressSymbol())) {
                     this.save(address, walletId, chainScanConfig.getAddressSymbol(), uid);
                 }
                 this.save(address, walletId, chainId, uid);

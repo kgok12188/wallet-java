@@ -1,5 +1,7 @@
 package com.tk.chain.sol;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -7,24 +9,33 @@ import com.tk.chain.sol.model.*;
 import com.tk.chains.BlockChain;
 import lombok.Data;
 import lombok.SneakyThrows;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.bitcoinj.core.Base58;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-
 
 @Slf4j
 @Data
 public class SolanaRpcClient {
+
+    public static final String SPLAssociatedTokenAccountProgramID = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+    public static final String ComputeBudgetProgramID = "ComputeBudget111111111111111111111111111111";
+    public static final String TokenProgramID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+    public static final String SystemProgramID = "11111111111111111111111111111111";
+
 
     private static final Logger logger = LoggerFactory.getLogger(SolanaRpcClient.class);
     protected final static ObjectMapper objectMapper = new ObjectMapper();
@@ -51,10 +62,6 @@ public class SolanaRpcClient {
 
     @SneakyThrows
     public <T> ResponseEntity<T> exchange(JsonRpcRequest request, ParameterizedTypeReference<T> responseType) {
-//        HttpHeaders headers = new HttpHeaders();
-//        headers.setContentType(MediaType.APPLICATION_JSON);
-//        headers.add("User-Agent", "Java/11");
-//        headers.add("x-api-key", "t-680f9e2a72fc4543b7e39cb8-df8a6c02a9424cbea793ffef");
         HttpEntity<String> requestEntity = new HttpEntity<>(objectMapper.writeValueAsString(request), httpHeaders);
         return restTemplate.exchange(url, HttpMethod.POST, requestEntity, responseType);
     }
@@ -64,6 +71,16 @@ public class SolanaRpcClient {
         ResponseEntity<JsonRpcResponseGenerics<SolEpochInfo>> response = exchange(new JsonRpcRequest<>(SolConstant.getEpochInfo, new ArrayList<>()), new ParameterizedTypeReference<JsonRpcResponseGenerics<SolEpochInfo>>() {
         });
         return BlockHeight.builder().blockHeight(Objects.requireNonNull(response.getBody()).getResult().getAbsoluteSlot().longValue() - 120).build();
+    }
+
+
+    public String getLatestBlocHash() {
+        ResponseEntity<JsonRpcResponseGenerics<RecentBlockHash>> response = exchange(new JsonRpcRequest<>(SolConstant.getLatestBlockhash, new ArrayList<>()), new ParameterizedTypeReference<JsonRpcResponseGenerics<RecentBlockHash>>() {
+        });
+        if (response.getBody() == null || response.getBody().getResult() == null) {
+            return "";
+        }
+        return response.getBody().getResult().getValue().getBlockhash();
     }
 
     @SneakyThrows
@@ -137,8 +154,10 @@ public class SolanaRpcClient {
             throw new RuntimeException(errMsg);
         }
         SolanaConfirmedBlock result = jsonRpcResponse.getBody().getResult();
-        return BlockTx.builder().blockHash(result.getBlockhash()).blockHeight(height).blockTime(result.getBlockTime().longValue() * 1000).parentHash(result.getPreviousBlockhash()).txs(result.getTransactions().stream().map(tx -> buildSolTx(tx.getMeta(), tx.getTransaction(), height)).filter(tx -> !CollectionUtils.isEmpty(tx.getActions())).collect(Collectors.toList())).build();
+        return BlockTx.builder().blockHash(result.getBlockhash()).blockHeight(height).blockTime(result.getBlockTime().longValue()).parentHash(result.getPreviousBlockhash()).txs(result.getTransactions().stream().map(tx ->
+                buildSolTx(tx.getMeta(), tx.getTransaction(), height, result.getBlockTime())).filter(tx -> !CollectionUtils.isEmpty(tx.getActions())).collect(Collectors.toList())).build();
     }
+
 
     @SneakyThrows
     public Transaction getTx(String hash) {
@@ -150,10 +169,14 @@ public class SolanaRpcClient {
 
         ResponseEntity<JsonRpcResponseGenerics<SolConfirmedTransaction>> jsonRpcResponse = exchange(new JsonRpcRequest<>(SolConstant.getTransaction, list), new ParameterizedTypeReference<JsonRpcResponseGenerics<SolConfirmedTransaction>>() {
         });
+        if (jsonRpcResponse.getBody() == null || jsonRpcResponse.getBody().getResult() == null) {
+            return null;
+        }
         if (Objects.nonNull(Objects.requireNonNull(jsonRpcResponse.getBody()).getError())) {
             throw new RuntimeException(jsonRpcResponse.getBody().getError().toString());
         }
-        return buildSolTx(jsonRpcResponse.getBody().getResult().getMeta(), jsonRpcResponse.getBody().getResult().getTransaction(), jsonRpcResponse.getBody().getResult().getSlot().longValue());
+        return buildSolTx(jsonRpcResponse.getBody().getResult().getMeta(), jsonRpcResponse.getBody().getResult().getTransaction(),
+                jsonRpcResponse.getBody().getResult().getSlot().longValue(), jsonRpcResponse.getBody().getResult().getBlockTime());
     }
 
     @SneakyThrows
@@ -183,64 +206,267 @@ public class SolanaRpcClient {
     }
 
 
-    protected Transaction buildSolTx(SolConfirmedTransaction.MetaModel meta, SolConfirmedTransaction.TransactionModel transaction, Long blockHeight) {
-        SolConfirmedTransaction.TransactionModel.MessageModel message = transaction.getMessage();
+    protected Transaction buildSolTx(SolConfirmedTransaction.MetaModel meta, SolConfirmedTransaction.TransactionModel transaction, Long blockHeight, BigInteger blockTime) {
         PaymentStatusEnum paymentStatus = Objects.nonNull(meta.getErr()) || Objects.nonNull(meta.getStatus().getErr()) ? PaymentStatusEnum.FAIL : PaymentStatusEnum.CONFIRMED;
         String hash = transaction.getSignatures().get(0);
-        String from = message.getAccountKeys().get(message.getHeader().getNumReadonlySignedAccounts());
-
-        AtomicInteger index = new AtomicInteger(0);
-
         if (meta.getPostBalances().size() != transaction.getMessage().getAccountKeys().size()) {
             return Transaction.builder().fee(meta.getFee()).blockHeight(blockHeight).status(paymentStatus.getCode()).txHash(hash).actions(Lists.newArrayList()).build();
         }
 
-        ArrayList<Transaction.Action> actions = Lists.newArrayList();
-
-        for (int i = 0; i < meta.getPostBalances().size(); i++) {
-            if (meta.getPostBalances().get(i).compareTo(meta.getPreBalances().get(i)) > 0) {
-                BigDecimal postBalance = meta.getPostBalances().get(i);
-                actions.add(Transaction.Action.builder().fromAddress(from)
-                        .postBalance(postBalance)
-                        .toAddress(transaction.getMessage().getAccountKeys().get(i))
-                        .symbol(getMainCoinName()).index(index.getAndIncrement())
-                        .fromAmount(meta.getPostBalances().get(i).subtract(meta.getPreBalances().get(i)))
-                        .toAmount(meta.getPostBalances().get(i).subtract(meta.getPreBalances().get(i))).build());
+        List<SolConfirmedTransaction.TransactionModel.MessageModel.InstructionsModel> instructions = new LinkedList<>(transaction.getMessage().getInstructions());
+        if (!CollectionUtils.isEmpty(meta.getInnerInstructions())) {
+            for (JSONObject innerInstruction : meta.getInnerInstructions()) {
+                List<SolConfirmedTransaction.TransactionModel.MessageModel.InstructionsModel> instructionList = innerInstruction.getJSONArray("instructions").toJavaList(SolConfirmedTransaction.TransactionModel.MessageModel.InstructionsModel.class);
+                if (!CollectionUtils.isEmpty(instructionList)) {
+                    instructions.addAll(instructionList);
+                }
             }
         }
 
-        meta.getPostTokenBalances().stream().filter(i -> (Objects.nonNull(i.getUiTokenAmount().getUiAmount()))).forEach(post -> {
-            List<SolConfirmedTransaction.MetaModel.PreTokenBalancesModel> preTokenBalances = meta.getPreTokenBalances().stream().filter(pre -> Objects.equals(pre.getAccountIndex(), post.getAccountIndex()) && !Objects.isNull(pre.getUiTokenAmount().getUiAmount())).collect(Collectors.toList());
-
-            BigDecimal amount;
-            if (CollectionUtils.isEmpty(preTokenBalances)) {
-                amount = new BigDecimal(post.getUiTokenAmount().getAmount());
-            } else if (post.getUiTokenAmount().getUiAmount().compareTo(preTokenBalances.get(0).getUiTokenAmount().getUiAmount()) > 0) {
-                amount = new BigDecimal(post.getUiTokenAmount().getAmount()).subtract(new BigDecimal(preTokenBalances.get(0).getUiTokenAmount().getAmount()));
-            } else {
-                return;
+        List<String> accountKeys = transaction.getMessage().getAccountKeys();
+        ArrayList<Transaction.Action> actions = Lists.newArrayList();
+        for (SolConfirmedTransaction.TransactionModel.MessageModel.InstructionsModel instruction : instructions) {
+            String programId = instruction.getProgramId(accountKeys);
+            List<Integer> accounts = instruction.getAccounts();
+            ArrayList<String> insAccountKeys = new ArrayList<>();
+            for (Integer account : accounts) {
+                insAccountKeys.add(accountKeys.get(account));
             }
-            actions.add(Transaction.Action.builder()
-                    .fromAddress(from)
-                    .toAddress(post.getOwner())
-                    .index(index.getAndIncrement()).fromAmount(amount)
-                    .toAmount(amount).contractAddress(post.getMint())
-                    .postBalance(post.getUiTokenAmount().getUiAmount())
-                    .symbol(post.getMint()).build());
-        });
-        return Transaction.builder().fee(meta.getFee()).blockHeight(blockHeight).status(paymentStatus.getCode()).txHash(hash).actions(actions).build();
+            if (org.apache.commons.lang3.StringUtils.equals(SystemProgramID, programId)) {
+                SystemTransferData systemTransferData = new SystemTransferData();
+                systemTransferData.parse(instruction.getData(), hash);
+                String fromAddress;
+                String toAddress;
+                if (systemTransferData.getInstructionType() == SystemInstructionType.InstructionTransfer.ordinal()) { // InstructionTransfer
+                    fromAddress = insAccountKeys.get(0);
+                    toAddress = insAccountKeys.get(1);
+                } else if (systemTransferData.getInstructionType() == SystemInstructionType.InstructionTransferWithSeed.ordinal()) { // InstructionTransferWithSeed
+                    fromAddress = insAccountKeys.get(0);
+                    toAddress = insAccountKeys.get(2);
+                } else {
+                    continue;
+                }
+                Transaction.Action.ActionBuilder actionBuilder = Transaction.Action.builder().fromAddress(fromAddress).toAddress(toAddress).amount(new BigDecimal(systemTransferData.getAmount())).contractAddress("").symbol(getMainCoinName());
+                for (int i = 0; i < meta.getPostBalances().size(); i++) {
+                    String account = accountKeys.get(i);
+                    if (org.apache.commons.lang3.StringUtils.equals(account, fromAddress)) {
+                        actionBuilder.fromPostBalance(meta.getPostBalances().get(i));
+                    }
+                    if (org.apache.commons.lang3.StringUtils.equals(account, toAddress)) {
+                        actionBuilder.toPostBalance(meta.getPostBalances().get(i));
+                    }
+                }
+                actions.add(actionBuilder.build());
+
+            } else if (org.apache.commons.lang3.StringUtils.equals(TokenProgramID, programId)) {
+                TokenTransferData tokenTransferData = new TokenTransferData();
+                tokenTransferData.parse(instruction.getData(), hash);
+                if (tokenTransferData.getAmount() <= 0) {
+                    continue;
+                }
+                String ataFrom = "";
+                String mint = "";
+                String ataTo = "";
+                String fromAddress = "";
+                if (tokenTransferData.getInstructionType() == TokenInstructionType.InstructionTransferChecked.ordinal()) {
+                    ataFrom = insAccountKeys.get(0);
+                    mint = insAccountKeys.get(1);
+                    ataTo = insAccountKeys.get(2);
+                    fromAddress = insAccountKeys.get(3);
+                } else if (tokenTransferData.getInstructionType() == TokenInstructionType.InstructionTransfer.ordinal()) {
+                    ataFrom = insAccountKeys.get(0);
+                    ataTo = insAccountKeys.get(1);
+                    fromAddress = insAccountKeys.get(2);
+                    for (SolConfirmedTransaction.MetaModel.PostTokenBalancesModel postTokenBalance : meta.getPostTokenBalances()) {
+                        Integer accountIndex = postTokenBalance.getAccountIndex();
+                        String ataAccount = accountKeys.get(accountIndex);
+                        if (StringUtils.equals(ataAccount, ataFrom) || StringUtils.equals(ataAccount, ataTo)) {
+                            mint = postTokenBalance.getMint();
+                            break;
+                        }
+                    }
+                } else if (tokenTransferData.getInstructionType() == TokenInstructionType.InstructionMintToChecked.ordinal()) {
+                    mint = insAccountKeys.get(0);
+                    ataTo = insAccountKeys.get(1);
+                    fromAddress = insAccountKeys.get(2);
+                } else if (tokenTransferData.getInstructionType() == TokenInstructionType.InstructionMintTo.ordinal()) {
+                    mint = insAccountKeys.get(0);
+                    ataTo = insAccountKeys.get(1);
+                    fromAddress = insAccountKeys.get(2);
+                } else {
+                    continue;
+                }
+                String toAddress = "";
+                Transaction.Action.ActionBuilder actionBuilder = Transaction.Action.builder().fromAddress(fromAddress).toAddress(toAddress).ataFrom(ataFrom).ataTo(ataTo).amount(new BigDecimal(tokenTransferData.getAmount())).contractAddress(mint).symbol(mint);
+                for (SolConfirmedTransaction.MetaModel.PostTokenBalancesModel postTokenBalance : meta.getPostTokenBalances()) {
+                    Integer accountIndex = postTokenBalance.getAccountIndex();
+                    String account = accountKeys.get(accountIndex);
+                    if (org.apache.commons.lang3.StringUtils.equals(account, ataTo)) {
+                        toAddress = postTokenBalance.getOwner();
+                        actionBuilder.toAddress(toAddress);
+                        actionBuilder.toPostBalance(postTokenBalance.getUiTokenAmount().getUiAmount());
+                    } else if (org.apache.commons.lang3.StringUtils.equals(account, ataFrom)) {
+                        actionBuilder.fromPostBalance(postTokenBalance.getUiTokenAmount().getUiAmount());
+                    }
+                }
+                actions.add(actionBuilder.build());
+            }
+        }
+        return Transaction.builder().fee(meta.getFee().stripTrailingZeros()).blockHeight(blockHeight)
+                .feePayer(transaction.getMessage().getAccountKeys().get(0))
+                .status(paymentStatus.getCode()).txHash(hash)
+                .blockTime(blockTime.longValue())
+                .actions(actions).build();
     }
 
-//    public static void main(String[] args) {
-//        SolanaRpcClient solanaRpcClient = new SolanaRpcClient(
-//                // "https://api.mainnet-beta.solana.com"
-//                // "https://sol.nownodes.io/4e2966c3-bc74-40a8-883e-2edb4550c557"
-//                "https://solana-mainnet.gateway.tatum.io",
-//                "x-api-key", "t-680f9e2a72fc4543b7e39cb8-df8a6c02a9424cbea793ffef"
-//        );
+    public void sendTransaction(String rawTx) {
+        List<Object> list = new ArrayList<>();
+        list.add(rawTx);
+        HashMap<String, Object> base = new HashMap<>();
+        base.put("encoding", "base64");
+        base.put("maxRetries", 5);
+        list.add(base);
+        ResponseEntity<JSONObject> responseEntity = exchange(new JsonRpcRequest<>("sendTransaction", list), new ParameterizedTypeReference<JSONObject>() {
+        });
+        if (responseEntity.getBody() == null) {
+            throw new IllegalArgumentException("响应失败");
+        }
+        if (responseEntity.getBody().containsKey("error")) {
+            throw new IllegalArgumentException(String.valueOf(responseEntity.getBody().get("error")));
+        }
+        logger.info("sendTransaction : {}", responseEntity.getBody());
+    }
+
+    public enum SystemInstructionType {
+        InstructionCreateAccount,
+        InstructionAssign,
+        InstructionTransfer,
+        InstructionCreateAccountWithSeed,
+        InstructionAdvanceNonceAccount,
+        InstructionWithdrawNonceAccount,
+        InstructionInitializeNonceAccount,
+        InstructionAuthorizeNonceAccount,
+        InstructionAllocate,
+        InstructionAllocateWithSeed,
+        InstructionAssignWithSeed,
+        InstructionTransferWithSeed,
+        InstructionUpgradeNonceAccount,
+    }
+
+    @Data
+    @ToString
+    public static class SystemTransferData {
+        public int instructionType;
+        public long amount;
+
+        public void parse(String data, String hash) {
+            try {
+                parse(Base58.decode(data));
+            } catch (Exception e) {
+                logger.error("SystemTransferData {},\t{}", data, hash, e);
+            }
+        }
+
+        public void parse(byte[] data) {
+            ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+            this.instructionType = buffer.getInt();
+            if (SystemInstructionType.InstructionTransfer.ordinal() == instructionType || SystemInstructionType.InstructionTransferWithSeed.ordinal() == instructionType) {
+                this.amount = buffer.getLong();
+            }
+        }
+    }
+
+
+    public enum TokenInstructionType {
+        InstructionInitializeMint,
+        InstructionInitializeAccount,
+        InstructionInitializeMultisig,
+        InstructionTransfer,
+        InstructionApprove,
+        InstructionRevoke,
+        InstructionSetAuthority,
+        InstructionMintTo,
+        InstructionBurn,
+        InstructionCloseAccount,
+        InstructionFreezeAccount,
+        InstructionThawAccount,
+        InstructionTransferChecked,
+        InstructionApproveChecked,
+        InstructionMintToChecked,
+        InstructionBurnChecked,
+        InstructionInitializeAccount2,
+        InstructionSyncNative,
+        InstructionInitializeAccount3,
+        InstructionInitializeMultisig2,
+        InstructionInitializeMint2,
+    }
+
+    @Data
+    @ToString
+    public static class TokenTransferData {
+
+        public int instructionType;
+        public long amount;
+        private int decimals;
+
+        public void parse(String data, String message) {
+            try {
+                parse(Base58.decode(data));
+            } catch (Exception e) {
+                logger.error("TokenTransferData {},\t{}", data, message, e);
+            }
+        }
+
+        public void parse(byte[] data) {
+            ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+            this.instructionType = buffer.get();
+            if (this.instructionType == TokenInstructionType.InstructionTransferChecked.ordinal() || this.instructionType == TokenInstructionType.InstructionMintToChecked.ordinal()) {
+                this.amount = buffer.getLong();
+                this.decimals = buffer.get();
+            } else if (this.instructionType == TokenInstructionType.InstructionMintTo.ordinal() || this.instructionType == TokenInstructionType.InstructionTransfer.ordinal()) {
+                this.amount = buffer.getLong();
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        SolanaRpcClient solanaRpcClient = new SolanaRpcClient(
+                // "https://api.mainnet-beta.solana.com"
+                // "https://sol.nownodes.io/4e2966c3-bc74-40a8-883e-2edb4550c557"
+                "https://solana-mainnet.gateway.tatum.io", "x-api-key", "t-680f9e2a72fc4543b7e39cb8-df8a6c02a9424cbea793ffef");
+//        SolanaRpcClient solanaRpcClient = new SolanaRpcClient("https://api.devnet.solana.com");
 //        Long blockHeight = solanaRpcClient.getHeight().getBlockHeight();
 //        BlockTx blockTx = solanaRpcClient.getBlockTx(blockHeight);
 //        System.out.println(JSON.toJSONString(blockTx.getTxs(), true));
-//    }
+        Transaction tx = solanaRpcClient.getTx("5rcF1b5vZHyZNb3dFZqBkfsTQdE4xvRbyBiigyR9N2VG7eDA2HLdfrjHbRp2BnVahfyc1vKiL18mxGm2wbC9JKJb");
+        System.out.println(JSON.toJSONString(tx, true));
+//
+//        SolTokenAccounts tokenAccountsByOwner = solanaRpcClient.getTokenAccountsByOwner("9rPYyANsfQZw3DnDmKE3YCQF5E8oD89UXoHn9JFEhJUz", "So11111111111111111111111111111111111111112");
+//
+//        System.out.println(JSON.toJSONString(tokenAccountsByOwner, true));
+//
+//        if (tokenAccountsByOwner != null && CollectionUtils.isNotEmpty(tokenAccountsByOwner.getValue())) {
+//            String ataTo = tokenAccountsByOwner.getValue().get(0).getPubkey();
+//        }
+
+//////        SolTokenAccounts tokenAccountsByOwner = solanaRpcClient.getTokenAccountsByOwner("HkVXjLrCVjaoyjgFX828yDRBnu4XVwMw5gLbgTSG7gtr", "7kMRdbsnUbpyrTPoJ13hVopnSotm9uC8bLpTUk4H9Qsk");
+//////
+//////
+//////        System.out.println(JSON.toJSONString(tokenAccountsByOwner, true));
+////
+////        System.out.println(solanaRpcClient.getLatestBlocHash());
+//
+//
+////        SystemTransferData systemTransferData = new SystemTransferData();
+////        systemTransferData.parse(Base58.decode("3Bxs3zzLZLuLQEYX"));
+////        System.out.println(systemTransferData);
+////
+////        TokenTransferData tokenTransferData = new TokenTransferData();
+////        tokenTransferData.parse(Base58.decode("g7Bq2vfyeK8ue"));
+////        System.out.println(tokenTransferData);
+////
+////        SolTokenAccountValue solTokenAccountValue = solanaRpcClient.getTokenAccountInfo("GuTdNcub79PPrcD4ARvnCvpEXJhofyGRDzLs5GC3uWQj");
+////        System.out.println(solTokenAccountValue);
+    }
 
 }

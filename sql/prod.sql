@@ -39,11 +39,11 @@ replace into chain_scan_config (chain_id, endpoints, status, ctime, mtime, block
                                 sign_url, address_url, address_symbol, multi_thread, multi_thread_numbers,
                                 retry_interval, json_config)
 values ('SOL',
-        '{"fields":{"url":"节点地址"},"value":[{"title":"dev","url":"https://api.devnet.solana.com/","enable":true}]}',
+        '{"fields":{"url":"节点地址"},"value":[{"title":"nownodes","url":"https://sol.nownodes.io/4e2966c3-bc74-40a8-883e-2edb4550c557","enable":true}]}',
         '1', now(), now(), '0', '0', now(), '',
         now(), 200, 0, 15, now(), 'http://127.0.0.1:8080/sol/sign',
-        'http://127.0.0.1:8080/sol/getAddress', '0', 'false', 0, 0, '');
-
+        'http://127.0.0.1:8080/sol/getAddress', '0', '0', 0, 0, '');
+--  {"title":"tatum","headers":["x-api-key","t-680f9e2a72fc4543b7e39cb8-df8a6c02a9424cbea793ffef"],"url":"https://solana-mainnet.gateway.tatum.io","enable":true}
 
 replace into chain_scan_config (chain_id, endpoints, status, ctime, mtime, block_number, block_height, scan_time,
                                 task_id, task_update_time, un_scan_block, delay_blocks, block_interval, last_block_time,

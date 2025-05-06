@@ -150,7 +150,8 @@ CREATE TABLE `chain_transaction`
     `url_code`              varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '链ID,比如BTC,ETH',
     `priority`              int                                                           NOT NULL DEFAULT '0' COMMENT '转账优先级，相同的from_address 该值越高，交易顺序越靠前',
     `auto_speed_up`         int                                                           NOT NULL DEFAULT '0' COMMENT '加速确认 1 自动加速，0 不加速',
-    `coin`                  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
+    `token_symbol`                  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
+    `symbol`                  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
     `transfer_block_number` int                                                                    DEFAULT NULL COMMENT '发起交易时的区块高度',
     `nonce`                 int                                                                    DEFAULT '0' COMMENT '发起交易序号',
     `error_count`           int                                                                    DEFAULT '0' COMMENT '交易失败次数',
@@ -161,7 +162,7 @@ CREATE TABLE `chain_transaction`
     KEY `chain_id_block_time` (`chain_id`, `block_time`),
     KEY `idx_from_address_nonce` (`from_address`, `nonce`)
 ) ENGINE = InnoDB
-  AUTO_INCREMENT = 469912
+  AUTO_INCREMENT = 0
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
 
@@ -254,6 +255,8 @@ CREATE TABLE `wallet_address`
   AUTO_INCREMENT = 126
   DEFAULT CHARSET = utf8mb3 COMMENT ='钱包地址';
 
+alter table wallet_address add unique index `base_symbol_address` (`base_symbol`,`address`);
+
 
 DROP TABLE IF EXISTS `wallet_symbol_config`;
 CREATE TABLE `wallet_symbol_config`
@@ -306,7 +309,7 @@ DROP TABLE IF EXISTS `wallet_withdraw`;
 CREATE TABLE `wallet_withdraw`
 (
     `id`            int(11) unsigned         NOT NULL AUTO_INCREMENT,
-    `trans_id`      int(11)                  NOT NULL COMMENT 'ex的业务id，唯一限制',
+    `trans_id`      varchar(1000)                  NOT NULL COMMENT 'ex的业务id，唯一限制',
     `base_symbol`   varchar(32)              NOT NULL COMMENT '货币代号，大写字母 TRX，ETH',
     `symbol`        varchar(32)              NOT NULL COMMENT '加密货币 trx ,usdt_trc20',
     `amount`        decimal(32, 16) unsigned NOT NULL DEFAULT '0.0000000000000000' COMMENT '提现金额',

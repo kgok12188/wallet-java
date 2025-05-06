@@ -1,0 +1,22 @@
+### GET request to example server
+POST localhost:9904/transaction/loadHash
+content-type: application/json
+
+{
+  "chainId": "SOL",
+  "hash": "4d5wMViZXtPeQoEgzVY5x9k3k1usK8GhthNgGTwYkmQz5tCxDGNrNq46BbtF6tvSvqqnh3FYHeHy1m6o4ejaYC81"
+}
+###
+
+
+POST localhost:9904/transaction/withdraw
+content-type: application/json
+
+{
+  "chainId": "SOL",
+  "walletId": 1000,
+  "symbol": "SOL",
+  "to": "7bmX7qkRtUePN5X9d5z4TzrSGrBKvmWspDMLXg72dd93",
+  "amount": 1,
+  "reqId": "xxxxxxxxx111111"
+}

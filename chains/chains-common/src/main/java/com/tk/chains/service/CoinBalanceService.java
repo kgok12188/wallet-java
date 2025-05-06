@@ -44,7 +44,7 @@ public class CoinBalanceService extends ServiceImpl<CoinBalanceMapper, CoinBalan
     @Autowired
     private SymbolConfigService symbolConfigService;
     //
-    private ReentrantLock reentrantLock = new ReentrantLock();
+    private final ReentrantLock reentrantLock = new ReentrantLock();
 
     public BigDecimal incrementAmount(Long id, BigDecimal value) {
         this.baseMapper.incrementAmount(id, value);

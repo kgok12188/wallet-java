@@ -1,5 +1,6 @@
 package com.tk.chain.sol.model;
 
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -37,7 +38,7 @@ public class SolConfirmedTransaction {
         @JSONField(name = "fee")
         private BigDecimal fee;
         @JSONField(name = "innerInstructions")
-        private List<?> innerInstructions;
+        private List<JSONObject> innerInstructions;
         @JSONField(name = "logMessages")
         private List<String> logMessages;
         @JSONField(name = "postBalances")
@@ -163,6 +164,11 @@ public class SolConfirmedTransaction {
                 private String data;
                 @JSONField(name = "programIdIndex")
                 private Integer programIdIndex;
+
+                public String getProgramId(List<String> accountKeys) {
+                    return accountKeys.get(programIdIndex);
+                }
+
             }
         }
     }

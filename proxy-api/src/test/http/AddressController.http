@@ -3,7 +3,7 @@ POST http://localhost:19901/address/get
 Content-Type: application/json
 
 {
-  "chain": "BSC",
-  "appId": 1,
+  "chain": "SOL",
+  "appId": 1000,
   "uid": 10000
 }

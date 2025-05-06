@@ -191,6 +191,10 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
             List<WalletWithdraw> walletWithdraws = walletWithdrawService.lambdaQuery().eq(WalletWithdraw::getBaseSymbol, chainScanConfig.getChainId()).eq(WalletWithdraw::getStatus, 2).list();
             if (CollectionUtils.isNotEmpty(walletWithdraws)) {
                 for (WalletWithdraw walletWithdraw : walletWithdraws) {
+                    SymbolConfig config = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId())
+                            .eq(SymbolConfig::getContractAddress, "").last("limit 1").one();
+                    WalletSymbolConfig walletSymbolConfig = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getSymbolConfigId, config.getId())
+                            .eq(WalletSymbolConfig::getWalletId, walletWithdraw.getWalletId()).last("limit 1").one();
                     ChainTransaction chainTransaction = new ChainTransaction();
                     chainTransaction.setChainId(chainScanConfig.getChainId());
                     chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.INIT.name());
@@ -198,7 +202,7 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
                     chainTransaction.setFromAddress(walletWithdraw.getAddressFrom());
                     chainTransaction.setToAddress(walletWithdraw.getAddressTo());
                     chainTransaction.setAmount(walletWithdraw.getAmount());
-
+                    chainTransaction.setGasAddress(walletSymbolConfig.getEnergyAddress());
                     SymbolConfig symbolConfig = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId()).eq(SymbolConfig::getSymbol, walletWithdraw.getSymbol()).one();
                     chainTransaction.setTokenSymbol(symbolConfig.getTokenSymbol());
                     chainTransaction.setSymbol(symbolConfig.getSymbol());
@@ -209,7 +213,7 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
                         chainService.addChainTransaction(chainTransaction);
                         WalletWithdraw update = new WalletWithdraw();
                         update.setId(walletWithdraw.getId());
-                        update.setStatus(2);
+                        update.setStatus(3);
                         walletWithdrawService.updateById(update);
                     } catch (Exception e) {
                         log.error("addChainTransaction", e);

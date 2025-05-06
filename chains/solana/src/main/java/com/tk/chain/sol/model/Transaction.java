@@ -10,7 +10,7 @@ import java.util.List;
 
 @Data
 @Builder
-@EqualsAndHashCode(callSuper=false)
+@EqualsAndHashCode(callSuper = false)
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,6 +37,10 @@ public class Transaction {
 
     private BigDecimal fee;
 
+    private Long blockTime;
+
+    private String feePayer;
+
 
     @Data
     @Builder
@@ -58,13 +62,14 @@ public class Transaction {
         private Integer index;
         private String fromAddress;
         private String toAddress;
-        private String toNewAddress;
+        private String ataFrom;
+        private String ataTo;
         private String symbol;
-        private BigDecimal fromAmount;
-        private BigDecimal toAmount;
+        private BigDecimal amount;
         private String memo;
         private String contractAddress;
         private String script;
-        private BigDecimal postBalance;
+        private BigDecimal fromPostBalance;
+        private BigDecimal toPostBalance;
     }
 }

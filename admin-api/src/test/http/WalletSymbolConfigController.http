@@ -16,3 +16,14 @@ Content-Type: application/json
   "walletId": 1000,
   "symbolConfigId": 16
 }
+
+
+### POST 设置bep20-usdt
+POST localhost:19903/walletSymbolConfig/add
+Content-Type: application/json
+
+{
+  "walletId": 1000,
+  "symbolConfigId": 17,
+  "coldAddress": "36B8ywqYhyZ4s3UpWoqcg3zzZsK75rBwJ2E5sJ7QNtZv"
+}

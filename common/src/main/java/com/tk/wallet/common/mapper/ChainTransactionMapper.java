@@ -35,6 +35,11 @@ public interface ChainTransactionMapper extends BaseMapper<ChainTransaction> {
     @Update("update chain_transaction set tx_status = 'WAITING_HASH', mtime = now(), transfer_block_number = #{transferBlockNumber},url_code = #{url}, nonce = #{nonce} where tx_status in('INIT','WAIT_TO_CHAIN') and  id = #{id}")
     Integer prepareTransfer(@Param("id") Long id, @Param("transferBlockNumber") BigInteger transferBlockNumber, @Param("url") String url, @Param("nonce") BigInteger nonce);
 
+
+    @Update("update chain_transaction set tx_status = 'WAITING_HASH', mtime = now(), transfer_block_number = #{transferBlockNumber},url_code = #{url}, nonce = #{nonce} where tx_status in('INIT','WAIT_TO_CHAIN') and  id in (${ids})")
+    Integer prepareTransferList(@Param("ids") String ids, @Param("transferBlockNumber") BigInteger transferBlockNumber, @Param("url") String url, @Param("nonce") BigInteger nonce);
+
+
     @Update("update chain_transaction set tx_status = 'INIT',transfer_block_number = 0, error_count = error_count + 1  where tx_status = 'WAITING_HASH' and  id = #{id}")
     void releaseWaitingHash(@Param("id") Long id);
 

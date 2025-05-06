@@ -109,6 +109,11 @@ public class ChainTransaction implements CalcFingerprint<Long> {
         GAS_NOT_ENOUGH     // 发起交易交易，燃料不足
     }
 
+
+    public String getContract() {
+        return StringUtils.isBlank(contract) ? "" : contract;
+    }
+
     public boolean success() {
         return StringUtils.equals(txStatus, TX_STATUS.SUCCESS.name());
     }

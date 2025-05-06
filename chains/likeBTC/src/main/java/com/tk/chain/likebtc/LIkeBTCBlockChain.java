@@ -80,6 +80,12 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
         return likeBTCClient.getChainTransaction(chainScanConfig, hash);
     }
 
+
+    @Override
+    protected boolean mergeSave() {
+        return true;
+    }
+
     @Override
     public void confirmTransaction(ChainScanConfig chainScanConfig, ChainTransaction chainTransaction) {
         ChainClient chainClient = getChainClient(new HashSet<String>() {

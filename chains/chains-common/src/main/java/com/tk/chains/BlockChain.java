@@ -4,7 +4,9 @@ package com.tk.chains;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tk.chains.event.EventManager;
+import com.tk.chains.event.TransactionEvent;
 import com.tk.chains.exceptions.ChainParamsError;
 import com.tk.chains.service.AddressChecker;
 import com.tk.chains.service.BlockTransactionManager;
@@ -12,6 +14,7 @@ import com.tk.chains.service.CoinBalanceService;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
 import com.tk.wallet.common.entity.SymbolConfig;
+import com.tk.wallet.common.mapper.ChainTransactionMapper;
 import com.tk.wallet.common.service.ChainScanConfigService;
 import com.tk.wallet.common.service.ChainTransactionService;
 import lombok.Getter;
@@ -20,9 +23,12 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.Closeable;
@@ -34,6 +40,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -63,6 +70,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     protected ApplicationContext applicationContext;
     protected CoinBalanceService coinBalanceService;
     protected ChainTransactionService chainTransactionService;
+    private ChainTransactionMapper chainTransactionMapper;
+
     @Getter
     @Setter
     private volatile boolean singleThread = false;
@@ -149,6 +158,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         this.addressChecker = applicationContext.getBean(AddressChecker.class);
         this.coinBalanceService = applicationContext.getBean(CoinBalanceService.class);
         this.chainTransactionService = applicationContext.getBean(ChainTransactionService.class);
+        this.chainTransactionMapper = applicationContext.getBean(ChainTransactionMapper.class);
     }
 
     public void scanMultiThread(ChainScanConfig chainScanConfig, Supplier<Boolean> supplier) {
@@ -216,7 +226,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
             try {
                 if (CollectionUtils.isNotEmpty(scanResult.getChainTransactions())) {
                     log.info("保存交易 blockNumber = {},\t size = {}", blockNumber, scanResult.getChainTransactions().size());
-                    blockTransactionManager.saveBlock(chainScanConfig, scanResult, this.mergeSave(), this);
+                    BlockChain<?> blockChain = applicationContext.getBean(this.getChainId(), BlockChain.class);
+                    blockChain.saveBlock(chainScanConfig, scanResult);
                 }
                 chainScanConfigService.updateBlockNumber(getChainId(), blockNumber);
             } catch (Exception e) {
@@ -264,7 +275,9 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 ScanResult scanResult = scan(chainScanConfig, blockNumber, chainClient);
                 List<ChainTransaction> chainTransactions = scanResult.getChainTransactions();
                 if (CollectionUtils.isNotEmpty(chainTransactions)) {
-                    blockTransactionManager.saveBlock(chainScanConfig, scanResult, this.mergeSave(), this);
+                    log.info("保存交易 blockNumber = {},\t size = {}", blockNumber, scanResult.getChainTransactions().size());
+                    BlockChain<?> blockChain = applicationContext.getBean(this.getChainId(), BlockChain.class);
+                    blockChain.saveBlock(chainScanConfig, scanResult);
                 }
                 rows += scanResult.getCount();
                 if ((System.currentTimeMillis() - logTime) >= logInv) {
@@ -389,34 +402,21 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
 
     private void mergeInOut(Map<String, BigDecimal> coinIn, Map<String, BigDecimal> coinOut) {
         for (Map.Entry<String, BigDecimal> kv : coinOut.entrySet()) {
-            BigDecimal amount = coinIn.get(kv.getKey());
-            if (amount == null) {
-                coinIn.put(kv.getKey(), kv.getValue().multiply(new BigDecimal("-1")));
-            } else {
-                coinIn.put(kv.getKey(), kv.getValue().multiply(new BigDecimal("-1")).add(amount));
-            }
+            coinIn.merge(kv.getKey(), kv.getValue().multiply(new BigDecimal("-1")), (a, b) -> b.add(a));
         }
     }
 
 
     public int loadHash(String chainId, String hash) {
         Optional<ChainScanConfig> chainScanConfigOptional = chainScanConfigService.lambdaQuery().eq(ChainScanConfig::getChainId, chainId).oneOpt();
-        if (chainScanConfigOptional.isPresent()) {
-            return loadHash(chainScanConfigOptional.get(), hash);
-        } else {
-            return 0;
-        }
+        return chainScanConfigOptional.map(scanConfig -> loadHash(scanConfig, hash)).orElse(0);
     }
 
     public int loadHash(ChainScanConfig chainScanConfig, String hash) {
         List<ChainTransaction> chainTransactions = getChainTransaction(chainScanConfig, hash, null);
         if (CollectionUtils.isNotEmpty(chainTransactions)) {
             List<ChainTransaction> transactions = chainTransactions.stream().filter(chainTransaction -> StringUtils.equalsIgnoreCase(chainTransaction.getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name())).collect(Collectors.toList());
-            if (transactions.size() == 1) {
-                blockTransactionManager.txSaveOrUpdate(transactions.get(0));
-            } else if (transactions.size() > 1) {
-                blockTransactionManager.txSaveOrUpdate(transactions);
-            }
+            txSaveOrUpdate(hash, transactions);
             return transactions.size();
         }
         return 0;
@@ -463,12 +463,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         for (Map.Entry<String, List<ChainTransaction>> kv : batchTransactions.entrySet()) {
             List<ChainTransaction> collect = kv.getValue().stream().filter(k -> k.getNonce().compareTo(BigInteger.ZERO) > 0).collect(Collectors.toList());
             if (CollectionUtils.isNotEmpty(collect)) {
-                collect.sort(new Comparator<ChainTransaction>() {
-                    @Override
-                    public int compare(ChainTransaction o1, ChainTransaction o2) {
-                        return o1.getNonce().compareTo(o2.getNonce());
-                    }
-                });
+                collect.sort(Comparator.comparing(ChainTransaction::getNonce));
                 this.reTransfer(chainScanConfig, collect);
             } else {
                 this.transfer(chainScanConfig, kv.getValue());
@@ -511,11 +506,22 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     public abstract void confirmTransaction(ChainScanConfig chainScanConfig, ChainTransaction chainTransaction);
 
 
+    public void sign(Object params, Consumer<JSONObject> consumer) {
+        String signUrl = chainScanConfig.getSignUrl();
+        try {
+            JSONObject jsonObject = new RestTemplate().postForObject(signUrl, params, JSONObject.class);
+            consumer.accept(jsonObject);
+        } catch (Exception e) {
+            log.error("sign : {}", chainId, e);
+        }
+    }
+
     // ==========================start 远程签名====================================
     protected String sign(Object signObj) {
         String signUrl = chainScanConfig.getSignUrl();
         try {
-            JSONObject jsonObject = new RestTemplate().postForObject(signUrl, signObj, JSONObject.class);
+            ResponseEntity<JSONObject> response = new RestTemplate().postForEntity(signUrl, signObj, JSONObject.class);
+            JSONObject jsonObject = response.getBody();
             if (jsonObject != null && jsonObject.containsKey("data")) {
                 return jsonObject.getString("data");
             }
@@ -818,7 +824,50 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
             this.blockNumber = blockNumber;
             this.blockTime = blockTime;
         }
+    }
 
+    // 代支付gas
+    public String feePayer(ChainScanConfig chainScanConfig, String address) {
+        return "";
+    }
+
+    @Transactional
+    public void saveBlock(ChainScanConfig chainScanConfig, BlockChain.ScanResult scanResult) throws Exception {
+        beforeSaveChainTransactions(chainScanConfig, chainScanConfig.getChainId(), scanResult.getBlockNumber(), scanResult.getBlockTime(), scanResult.getChainTransactions());
+        HashMap<String, List<ChainTransaction>> hash2ChainTransactions = new HashMap<>();
+        for (ChainTransaction chainTransaction : scanResult.getChainTransactions()) {
+            List<ChainTransaction> transactions = hash2ChainTransactions.getOrDefault(chainTransaction.getHash(), new ArrayList<>());
+            transactions.add(chainTransaction);
+            hash2ChainTransactions.put(chainTransaction.getHash(), transactions);
+        }
+        for (Map.Entry<String, List<ChainTransaction>> kv : hash2ChainTransactions.entrySet()) {
+            txSaveOrUpdate(kv.getKey(), kv.getValue());
+        }
+    }
+
+    /**
+     * 链上区块扫到后
+     * 1、与体现交易合并
+     * 2、充值直接保存
+     *
+     * @param chainTransactions 交易
+     */
+    public void txSaveOrUpdate(String hash, List<ChainTransaction> chainTransactions) {
+        LambdaQueryWrapper<ChainTransaction> lqw = new LambdaQueryWrapper<>();
+        lqw.eq(ChainTransaction::getHash, hash);
+        lqw.eq(ChainTransaction::getChainId, chainId);
+        List<ChainTransaction> list = chainTransactionService.list(lqw);
+        // 提现交易，链上交易合并
+        if (CollectionUtils.isNotEmpty(list)) {
+            chainTransactionMapper.updateBlockNum(chainId, hash, chainTransactions.get(0).getBlockNum());
+            chainTransactionMapper.updateGas(chainTransactions.get(0));
+            chainTransactionMapper.updateTxStatus(chainId, hash, chainTransactions.get(0).getTxStatus(), chainTransactions.get(0).getFailCode(), chainTransactions.get(0).getMessage());
+            if (eventManager != null) {
+                eventManager.emit(new TransactionEvent(chainId, null, chainTransactionService.list(lqw)));
+            }
+        } else if (CollectionUtils.isEmpty(list)) {
+            chainTransactionService.saveBatch(chainTransactions);
+        }
     }
 
 }

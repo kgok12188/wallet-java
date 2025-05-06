@@ -12,8 +12,7 @@ public interface SolConstant {
     String getRecentBlockhash = "getRecentBlockhash";
     String sendTransaction = "sendTransaction";
 
-
-
+    String getLatestBlockhash = "getLatestBlockhash";
 
 
     String maxSupportedTransactionVersion = "maxSupportedTransactionVersion";
