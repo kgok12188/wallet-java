@@ -116,10 +116,11 @@ CREATE TABLE `chain_scan_hosts`
 (
     `task_id`     varchar(200) NOT NULL COMMENT '服务器hostname-uuid 组成jvm id',
     `update_time` timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `chain_ids`   varchar(200)          default '' COMMENT '扫描的链',
     PRIMARY KEY (`task_id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
-  COLLATE = utf8mb4_0900_ai_ci;
+  COLLATE = utf8mb4_unicode_ci;
 
 DROP TABLE IF EXISTS `chain_transaction`;
 
@@ -130,8 +131,6 @@ CREATE TABLE `chain_transaction`
     `business_id`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '充值业务id',
     `hash`                  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '链上交易hash',
     `gas_address`           varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '该笔链上交易支付gas的地址',
-    `gas`                   decimal(38, 19) unsigned                                      NOT NULL DEFAULT '0.0000000000000000000' COMMENT '手续费配置',
-    `act_gas`               decimal(38, 19) unsigned                                      NOT NULL DEFAULT '0.0000000000000000000' COMMENT '实际支付手续费',
     `gas_config`            text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '提币配置,json格式,链不同，配置也不同',
     `chain_info`            text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'json格式，便于重试',
     `from_address`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '转出地址',
@@ -150,8 +149,8 @@ CREATE TABLE `chain_transaction`
     `url_code`              varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '链ID,比如BTC,ETH',
     `priority`              int                                                           NOT NULL DEFAULT '0' COMMENT '转账优先级，相同的from_address 该值越高，交易顺序越靠前',
     `auto_speed_up`         int                                                           NOT NULL DEFAULT '0' COMMENT '加速确认 1 自动加速，0 不加速',
-    `token_symbol`                  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
-    `symbol`                  varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
+    `token_symbol`          varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
+    `symbol`                varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci          DEFAULT NULL COMMENT '币种符号',
     `transfer_block_number` int                                                                    DEFAULT NULL COMMENT '发起交易时的区块高度',
     `nonce`                 int                                                                    DEFAULT '0' COMMENT '发起交易序号',
     `error_count`           int                                                                    DEFAULT '0' COMMENT '交易失败次数',
@@ -165,6 +164,35 @@ CREATE TABLE `chain_transaction`
   AUTO_INCREMENT = 0
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
+
+
+-- 对chain_transaction发起的交易，批量上链
+DROP TABLE IF EXISTS `chain_withdraw`;
+
+CREATE TABLE `chain_withdraw`
+(
+    `id`           int unsigned             NOT NULL AUTO_INCREMENT,
+    `chain_id`     varchar(200)             NOT NULL COMMENT '链ID,比如BTC,ETH',
+    `hash`         varchar(100) COMMENT '交易hash',
+    `transfer_id`  varchar(100) COMMENT '根据链特性，没有hash的情况交易去重',
+    `gas`          decimal(32, 16) unsigned NOT NULL COMMENT 'gas',
+    `gas_address`  varchar(200)             NOT NULL COMMENT 'gas地址',
+    `block_height` bigint(20)               NOT NULL COMMENT '区块高度',
+    `block_time`   timestamp                NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '区块时间',
+    `status`       varchar(200)             not null COMMENT '状态 同chain_transaction',
+    `info`         text COMMENT '交易信息',
+    `row_data`     text COMMENT '离线签名信息',
+    `ids`          text comment 'chain_transaction的id列表,格式[1,2,3,4]',
+    `mtime`        timestamp                NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uidx_hash` (`hash`),
+    UNIQUE KEY `uidx_transfer_id` (`transfer_id`),
+    key `idx_status` (`status`),
+    KEY `idx_gas_address` (`gas_address`)
+) ENGINE = InnoDB
+  AUTO_INCREMENT = 0
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci comment '对chain_transaction发起的交易，批量上链';
 
 
 
@@ -255,7 +283,8 @@ CREATE TABLE `wallet_address`
   AUTO_INCREMENT = 126
   DEFAULT CHARSET = utf8mb3 COMMENT ='钱包地址';
 
-alter table wallet_address add unique index `base_symbol_address` (`base_symbol`,`address`);
+alter table wallet_address
+    add unique index `base_symbol_address` (`base_symbol`, `address`);
 
 
 DROP TABLE IF EXISTS `wallet_symbol_config`;
@@ -309,7 +338,7 @@ DROP TABLE IF EXISTS `wallet_withdraw`;
 CREATE TABLE `wallet_withdraw`
 (
     `id`            int(11) unsigned         NOT NULL AUTO_INCREMENT,
-    `trans_id`      varchar(1000)                  NOT NULL COMMENT 'ex的业务id，唯一限制',
+    `trans_id`      varchar(1000)            NOT NULL COMMENT 'ex的业务id，唯一限制',
     `base_symbol`   varchar(32)              NOT NULL COMMENT '货币代号，大写字母 TRX，ETH',
     `symbol`        varchar(32)              NOT NULL COMMENT '加密货币 trx ,usdt_trc20',
     `amount`        decimal(32, 16) unsigned NOT NULL DEFAULT '0.0000000000000000' COMMENT '提现金额',

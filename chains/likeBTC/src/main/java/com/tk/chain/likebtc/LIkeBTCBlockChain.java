@@ -8,6 +8,7 @@ import com.tk.chains.BlockChain;
 import com.tk.chains.exceptions.GasException;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
+import com.tk.wallet.common.entity.ChainWithdraw;
 import com.tk.wallet.common.entity.SymbolConfig;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -45,10 +46,11 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
         if (new BigDecimal(value).compareTo(BigDecimal.ZERO) <= 0) {
             throw new GasException(this.getChainId(), "feekb = " + value + " 设置错误，必须大于0");
         }
-        if (chainTransaction.getGas() == null) {
+        BigDecimal gas = jsonObject.getBigDecimal("gas");
+        if (gas == null) {
             throw new GasException(this.getChainId(), "gas = " + value + " 必须设置");
         }
-        if (chainTransaction.getGas().compareTo(BigDecimal.ZERO) <= 0) {
+        if (gas.compareTo(BigDecimal.ZERO) <= 0) {
             throw new GasException(this.getChainId(), "gas = " + value + " 设置错误，必须大于0");
         }
     }
@@ -78,12 +80,6 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
         ChainClient chainClient = getChainClient(null);
         LikeBTCClient likeBTCClient = chainClient.getClient();
         return likeBTCClient.getChainTransaction(chainScanConfig, hash);
-    }
-
-
-    @Override
-    protected boolean mergeSave() {
-        return true;
     }
 
     @Override
@@ -176,7 +172,7 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
         BigDecimal totalAmount = BigDecimal.ZERO;
         Long feekb = null;
         for (ChainTransaction chainTransaction : chainTransactions) {
-            BigDecimal transferGas = chainTransaction.getGas() == null ? JSON.parseObject(mainCoinConfig.getConfigJson()).getBigDecimal("gas") : chainTransaction.getGas();
+            BigDecimal transferGas = JSON.parseObject(mainCoinConfig.getConfigJson()).getBigDecimal("gas");
             maxGas = maxGas.compareTo(transferGas) >= 0 ? maxGas : transferGas;
             totalAmount = totalAmount.add(chainTransaction.getAmount());
             Long feekbItem = JSON.parseObject(chainTransaction.getGasConfig()).getLong("feekb");
@@ -214,7 +210,11 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
         }
         if (enoughBalance) {
             List<Map<String, Object>> vin = new ArrayList<>();
+            String transferId = "";
             for (Output output : selectedOutputs) {
+                if (StringUtils.isBlank(transferId)) {
+                    transferId = output.getTxId();
+                }
                 HashMap<String, Object> vItem = new HashMap<>();
                 vItem.put("txid", output.getTxId());
                 vItem.put("vout", output.getVOut());
@@ -242,9 +242,9 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
             signReq.put("change", changeAddress);
             signReq.put("feekb", feekb);
             signReq.put("coin", mainCoinConfig.getSymbol());
-            String decrypt = super.sign(signReq);
+            String rowData = super.sign(signReq);
             if (log.isDebugEnabled()) {
-                log.debug("rawTransaction : {}", decrypt);
+                log.debug("rawTransaction : {}", rowData);
             }
             // 存储在交易快照中
             signReq.put("gas", totalGas);
@@ -256,12 +256,17 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
             String hash = "";
             if (flag) {
                 String chainInfo = JSON.toJSONString(signReq);
+                ChainWithdraw chainWithdraw = new ChainWithdraw();
+                chainWithdraw.setStatus(ChainTransaction.TX_STATUS.WAITING_HASH.name());
+                chainWithdraw.setGasAddress(fromAddress);
+                chainWithdraw.setTransferId(transferId);
+                chainWithdraw.setRowData(rowData);
+                chainWithdraw.setIds(JSON.toJSONString(chainTransactions.stream().map(ChainTransaction::getId).collect(Collectors.toList())));
+                chainWithdrawService.save(chainWithdraw);
                 try {
-                    hash = chainClient.getClient().sendRawTransaction(decrypt);
+                    hash = chainClient.getClient().sendRawTransaction(rowData);
                 } catch (Exception e) {
-                    for (ChainTransaction chainTransaction : chainTransactions) {
-                        blockTransactionManager.releaseWaitingHash(chainTransaction.getId());
-                    }
+                    blockTransactionManager.networkError(chainWithdraw);
                     markClientError(chainClient);
                     log.error("sendRawTransaction {}", StringUtils.join(chainTransactions.stream().map(ChainTransaction::getId).collect(Collectors.toList())), e);
                     return;
@@ -386,18 +391,19 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
         }
 
         @Override
-        public ScanResult doScan(ChainScanConfig chainScanConfig, BigInteger blockNumber) throws Exception {
+        public ScanResult doScan(ChainScanConfig chainScanConfig, BigInteger blockNumber) {
             String blockHash = getBlockHash(blockNumber.intValue());
             int pageIndex = 1;
             int totalPage = Integer.MAX_VALUE;
             int txsCount = 0;
             Date blockTime = null;
-            Map<String, List<ChainTransaction>> hash2ChainTransactions = new HashMap<>();
+            List<ScanResultTx> txList = new ArrayList<>();
             while (pageIndex <= totalPage) {
                 JSONObject block = getBlock(blockHash, pageIndex);
                 if (blockTime == null) {
                     blockTime = new Date(block.getLongValue("time") * 1000);
                 }
+                List<ChainTransaction> transactions = new ArrayList<>();
                 totalPage = block.getIntValue("totalPages");
                 JSONArray txs = block.getJSONArray("txs");
                 txsCount = txs.size() + txsCount;
@@ -406,6 +412,7 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                     String hash = tx.getString("txid");
                     String fromAddress = "";
                     JSONArray vout = tx.getJSONArray("vout");
+                    String transferId = "";
                     HashMap<String, BigDecimal> toAddressAmount = new HashMap<>();
                     BigDecimal totalOut = BigDecimal.ZERO;
                     for (int j = 0; j < vout.size(); j++) {
@@ -413,7 +420,7 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                         Boolean isAddress = txOut.getBoolean("isAddress");
                         if (isAddress != null && isAddress) {
                             String toAddress = txOut.getJSONArray("addresses").getString(0);
-                            BigDecimal amount = txOut.getBigDecimal("value").divide(mainCoinConfig.precision());
+                            BigDecimal amount = txOut.getBigDecimal("value").divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN).stripTrailingZeros();
                             BigDecimal value = toAddressAmount.get(toAddress);
                             if (value == null) {
                                 value = BigDecimal.ZERO;
@@ -423,7 +430,6 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                             totalOut = totalOut.add(amount);
                         }
                     }
-                    List<ChainTransaction> transactions = new ArrayList<>();
                     JSONArray vinList = tx.getJSONArray("vin");
                     for (int k = 0; k < vinList.size(); k++) {
                         JSONObject item = vinList.getJSONObject(k);
@@ -431,11 +437,14 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                             fromAddress = item.getJSONArray("addresses").get(0).toString();
                             break;
                         }
+                        if (StringUtils.isBlank(transferId)) {
+                            transferId = item.getString("txid");
+                        }
                     }
+                    BigDecimal actGas = BigDecimal.ZERO;
                     for (Map.Entry<String, BigDecimal> kv : toAddressAmount.entrySet()) {
                         String toAddress = kv.getKey();
                         BigDecimal amount = kv.getValue();
-                        BigDecimal actGas = BigDecimal.ZERO;
                         BigDecimal gas = BigDecimal.ZERO;
                         if (addressChecker.owner(fromAddress, toAddress, getChainId(), hash)) {
                             ChainTransaction chainTransaction = new ChainTransaction();
@@ -449,38 +458,31 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                             chainTransaction.setContract("");
                             chainTransaction.setFromAddress(fromAddress);
                             chainTransaction.setToAddress(toAddress);
-                            chainTransaction.setGasAddress(fromAddress);
+                            chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.PENDING.name());
                             chainTransaction.setAmount(amount);
                             chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
                             chainTransaction.setSymbol(mainCoinConfig.getSymbol());
                             chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
                             chainTransaction.setUrlCode(chainClient.getUrl());
                             chainTransaction.setBlockTime(blockTime);
-                            ChainTransaction businessTransaction = blockTransactionManager.getBusinessTransaction(getChainId(), hash);
-                            if (businessTransaction != null) {
-                                JSONObject outConfig = JSON.parseObject(businessTransaction.getChainInfo());
-                                gas = outConfig.getBigDecimal("gas");
+                            ChainWithdraw chainWithdraw = chainWithdrawService.lambdaQuery().eq(ChainWithdraw::getChainId, chainId).eq(ChainWithdraw::getHash, hash).last("limit 1").one();
+                            if (chainWithdraw == null) {
+                                chainWithdrawService.lambdaQuery().eq(ChainWithdraw::getChainId, chainId).eq(ChainWithdraw::getTransferId, transferId).last("limit 1").one();
+                            }
+                            if (chainWithdraw != null) {
+                                JSONObject outConfig = JSON.parseObject(chainWithdraw.getInfo());
                                 actGas = outConfig.getBigDecimal("totalOut").subtract(totalOut);
                             }
-                            chainTransaction.setGas(gas);
-                            chainTransaction.setActGas(actGas);
                             transactions.add(chainTransaction);
                         }
                     }
                     if (CollectionUtils.isNotEmpty(transactions)) {
-                        hash2ChainTransactions.put(transactions.get(0).getHash(), transactions);
+                        txList.add(new ScanResultTx(hash, transferId, fromAddress, actGas, transactions, transactions.get(0).getTxStatus()));
                     }
                 }
                 pageIndex++;
             }
-            ArrayList<ChainTransaction> list = new ArrayList<>();
-            if (!hash2ChainTransactions.isEmpty()) {
-                Collection<List<ChainTransaction>> values = hash2ChainTransactions.values();
-                for (List<ChainTransaction> value : values) {
-                    list.addAll(value);
-                }
-            }
-            return new ScanResult(txsCount, list, blockNumber, blockTime);
+            return new ScanResult(txList.size(), txList, blockNumber, blockTime);
         }
 
         @Override
@@ -508,7 +510,7 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                 JSONObject item = vinList.getJSONObject(i);
                 if (item.getBoolean("isAddress")) {
                     fromAddress = item.getJSONArray("addresses").get(0).toString();
-                    BigDecimal value = item.getBigDecimal("value").divide(mainCoinConfig.precision());
+                    BigDecimal value = item.getBigDecimal("value").divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN);
                     inputAmount = inputAmount.add(value);
                 }
             }
@@ -531,9 +533,6 @@ public class LIkeBTCBlockChain extends BlockChain<LIkeBTCBlockChain.LikeBTCClien
                     chainTransactions.add(chainTransaction);
                     outputAmount = outputAmount.add(chainTransaction.getAmount());
                 }
-            }
-            for (ChainTransaction chainTransaction : chainTransactions) {
-                chainTransaction.setActGas(inputAmount.subtract(outputAmount));
             }
             return chainTransactions;
         }

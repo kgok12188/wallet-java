@@ -17,6 +17,19 @@ content-type: application/json
   "walletId": 1000,
   "symbol": "SOL",
   "to": "7bmX7qkRtUePN5X9d5z4TzrSGrBKvmWspDMLXg72dd93",
-  "amount": 1,
-  "reqId": "xxxxxxxxx111111"
+  "amount": 0.1,
+  "reqId": "9901"
+}
+
+####
+POST localhost:9904/transaction/withdraw
+content-type: application/json
+
+{
+  "chainId": "SOL",
+  "walletId": 1000,
+  "symbol": "SOL-USDT",
+  "to": "7bmX7qkRtUePN5X9d5z4TzrSGrBKvmWspDMLXg72dd93",
+  "amount": 50,
+  "reqId": "9902"
 }

@@ -13,17 +13,19 @@ import com.tk.chains.service.BlockTransactionManager;
 import com.tk.chains.service.CoinBalanceService;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
+import com.tk.wallet.common.entity.ChainWithdraw;
 import com.tk.wallet.common.entity.SymbolConfig;
 import com.tk.wallet.common.mapper.ChainTransactionMapper;
 import com.tk.wallet.common.service.ChainScanConfigService;
 import com.tk.wallet.common.service.ChainTransactionService;
+import com.tk.wallet.common.service.ChainWithdrawService;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -70,7 +72,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     protected ApplicationContext applicationContext;
     protected CoinBalanceService coinBalanceService;
     protected ChainTransactionService chainTransactionService;
-    private ChainTransactionMapper chainTransactionMapper;
+    protected ChainTransactionMapper chainTransactionMapper;
+    protected ChainWithdrawService chainWithdrawService;
 
     @Getter
     @Setter
@@ -103,6 +106,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         }
         return chainClients.get((int) (index.getAndIncrement() % chainClients.size()));
     }
+
 
     /**
      * 配置是否ok
@@ -159,6 +163,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         this.coinBalanceService = applicationContext.getBean(CoinBalanceService.class);
         this.chainTransactionService = applicationContext.getBean(ChainTransactionService.class);
         this.chainTransactionMapper = applicationContext.getBean(ChainTransactionMapper.class);
+        this.chainWithdrawService = applicationContext.getBean(ChainWithdrawService.class);
     }
 
     public void scanMultiThread(ChainScanConfig chainScanConfig, Supplier<Boolean> supplier) {
@@ -224,8 +229,8 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 return false;
             }
             try {
-                if (CollectionUtils.isNotEmpty(scanResult.getChainTransactions())) {
-                    log.info("保存交易 blockNumber = {},\t size = {}", blockNumber, scanResult.getChainTransactions().size());
+                if (CollectionUtils.isNotEmpty(scanResult.getTxList())) {
+                    log.info("保存交易 blockNumber = {},\t size = {}", blockNumber, scanResult.getTxList().size());
                     BlockChain<?> blockChain = applicationContext.getBean(this.getChainId(), BlockChain.class);
                     blockChain.saveBlock(chainScanConfig, scanResult);
                 }
@@ -273,9 +278,9 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 blockNumber = blockNumber.add(new BigInteger("1"));
                 block++;
                 ScanResult scanResult = scan(chainScanConfig, blockNumber, chainClient);
-                List<ChainTransaction> chainTransactions = scanResult.getChainTransactions();
-                if (CollectionUtils.isNotEmpty(chainTransactions)) {
-                    log.info("保存交易 blockNumber = {},\t size = {}", blockNumber, scanResult.getChainTransactions().size());
+                List<ScanResultTx> txList = scanResult.getTxList();
+                if (CollectionUtils.isNotEmpty(txList)) {
+                    log.info("保存交易 chainId = {},\tblockNumber = {},\t size = {}", chainId, blockNumber, scanResult.getTxList().size());
                     BlockChain<?> blockChain = applicationContext.getBean(this.getChainId(), BlockChain.class);
                     blockChain.saveBlock(chainScanConfig, scanResult);
                 }
@@ -293,11 +298,6 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 break;
             }
         }
-    }
-
-
-    protected boolean mergeSave() {
-        return false;
     }
 
     /**
@@ -329,15 +329,6 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                 String toAddress = chainTransaction.getToAddress();
                 BigDecimal amount = chainTransaction.getAmount();
                 String contract = chainTransaction.getContract();
-                BigDecimal actGas = chainTransaction.getActGas();
-                String gasAddress = chainTransaction.getGasAddress();
-                if (StringUtils.isNotBlank(gasAddress) && actGas != null && actGas.compareTo(BigDecimal.ZERO) > 0) {
-                    if (coinOut.containsKey(gasAddress)) {
-                        coinOut.put(gasAddress, actGas.add(coinOut.get(gasAddress)));
-                    } else {
-                        coinOut.put(gasAddress, actGas);
-                    }
-                }
                 if (StringUtils.isNotBlank(contract)) {
                     Map<String, BigDecimal> in = tokenIn.containsKey(contract) ? tokenIn.get(contract) : new HashMap<>();
                     tokenIn.put(contract, in);
@@ -371,16 +362,6 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
                         } else {
                             coinIn.put(toAddress, amount);
                         }
-                    }
-                }
-            } else if (StringUtils.isNotBlank(chainTransaction.getHash()) && ChainTransaction.TX_STATUS.FAIL.name().equals(chainTransaction.getTxStatus()) && chainTransaction.getActGas() != null && chainTransaction.getActGas().compareTo(BigDecimal.ZERO) > 0) { // 链上交易失败，需要计算手续费
-                BigDecimal actGas = chainTransaction.getActGas();
-                String gasAddress = chainTransaction.getGasAddress();
-                if (StringUtils.isNotBlank(gasAddress)) {
-                    if (coinOut.containsKey(gasAddress)) {
-                        coinOut.put(gasAddress, actGas.add(coinOut.get(gasAddress)));
-                    } else {
-                        coinOut.put(gasAddress, actGas);
                     }
                 }
             }
@@ -461,13 +442,7 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
         }
         // end 按照发送地址分组===================
         for (Map.Entry<String, List<ChainTransaction>> kv : batchTransactions.entrySet()) {
-            List<ChainTransaction> collect = kv.getValue().stream().filter(k -> k.getNonce().compareTo(BigInteger.ZERO) > 0).collect(Collectors.toList());
-            if (CollectionUtils.isNotEmpty(collect)) {
-                collect.sort(Comparator.comparing(ChainTransaction::getNonce));
-                this.reTransfer(chainScanConfig, collect);
-            } else {
-                this.transfer(chainScanConfig, kv.getValue());
-            }
+            this.transfer(chainScanConfig, kv.getValue());
         }
     }
 
@@ -814,34 +789,81 @@ public abstract class BlockChain<T> implements ApplicationContextAware {
     @Getter
     public static class ScanResult {
         private int count = 0;
-        List<ChainTransaction> chainTransactions;
+        List<ScanResultTx> txList;
         private final BigInteger blockNumber;
         private final Date blockTime;
 
-        public ScanResult(int count, List<ChainTransaction> chainTransactions, BigInteger blockNumber, Date blockTime) {
+        public ScanResult(int count, List<ScanResultTx> txList, BigInteger blockNumber, Date blockTime) {
             this.count = count;
-            this.chainTransactions = chainTransactions;
+            this.txList = txList;
             this.blockNumber = blockNumber;
             this.blockTime = blockTime;
         }
     }
 
+    @Data
+    public static class ScanResultTx {
+        private String hash;
+        private String transferId;
+        private String gasPayer;
+        private BigDecimal gas;
+        List<ChainTransaction> chainTransactions;
+        private String txStatus;
+
+        public ScanResultTx(String hash, String transferId, String gasPayer, BigDecimal gas, List<ChainTransaction> chainTransactions, String txStatus) {
+            this.hash = hash;
+            this.gasPayer = gasPayer;
+            this.gas = gas;
+            this.chainTransactions = chainTransactions;
+            this.transferId = transferId;
+            this.txStatus = txStatus;
+        }
+    }
+
     // 代支付gas
-    public String feePayer(ChainScanConfig chainScanConfig, String address) {
+    public String feePayer(String address) {
         return "";
     }
 
     @Transactional
     public void saveBlock(ChainScanConfig chainScanConfig, BlockChain.ScanResult scanResult) throws Exception {
-        beforeSaveChainTransactions(chainScanConfig, chainScanConfig.getChainId(), scanResult.getBlockNumber(), scanResult.getBlockTime(), scanResult.getChainTransactions());
-        HashMap<String, List<ChainTransaction>> hash2ChainTransactions = new HashMap<>();
-        for (ChainTransaction chainTransaction : scanResult.getChainTransactions()) {
-            List<ChainTransaction> transactions = hash2ChainTransactions.getOrDefault(chainTransaction.getHash(), new ArrayList<>());
-            transactions.add(chainTransaction);
-            hash2ChainTransactions.put(chainTransaction.getHash(), transactions);
+        List<ChainTransaction> chainTransactions = scanResult.getTxList().stream().flatMap(tx -> tx.getChainTransactions().stream()).collect(Collectors.toList());
+        beforeSaveChainTransactions(chainScanConfig, chainScanConfig.getChainId(), scanResult.getBlockNumber(), scanResult.getBlockTime(), chainTransactions);
+        for (ScanResultTx tx : scanResult.getTxList()) {
+            saveScanResultTx(tx, scanResult.getBlockTime(), scanResult.getBlockNumber());
         }
-        for (Map.Entry<String, List<ChainTransaction>> kv : hash2ChainTransactions.entrySet()) {
-            txSaveOrUpdate(kv.getKey(), kv.getValue());
+    }
+
+    private void saveScanResultTx(ScanResultTx tx, Date blockTime, BigInteger blockNumber) {
+        ChainWithdraw dbChainWithdraw = chainWithdrawService.lambdaQuery().eq(ChainWithdraw::getHash, tx.getHash()).last("limit 1").one();
+        if (dbChainWithdraw == null && StringUtils.isNotBlank(tx.getTransferId())) {
+            dbChainWithdraw = chainWithdrawService.lambdaQuery().eq(ChainWithdraw::getTransferId, tx.getTransferId()).last("limit 1").one();
+        }
+        if (dbChainWithdraw == null) {
+            ChainTransaction chainTransaction = chainTransactionService.lambdaQuery().eq(ChainTransaction::getChainId, chainId).eq(ChainTransaction::getHash, tx.getHash()).last("limit 1").one();
+            if (chainTransaction == null) {
+                for (ChainTransaction transaction : tx.getChainTransactions()) {
+                    chainTransactionService.save(transaction);
+                }
+            }
+        } else {
+            ChainWithdraw update = new ChainWithdraw();
+            update.setId(dbChainWithdraw.getId());
+            update.setStatus(tx.getTxStatus());
+            update.setGasAddress(tx.getGasPayer());
+            update.setGas(tx.getGas());
+            update.setBlockTime(blockTime);
+            update.setBlockHeight(blockNumber);
+            chainWithdrawService.updateById(update);
+            List<Long> ids = JSON.parseArray(dbChainWithdraw.getIds()).toJavaList(Long.class);
+            for (Long id : ids) {
+                ChainTransaction updateChainTransaction = new ChainTransaction();
+                updateChainTransaction.setId(id);
+                updateChainTransaction.setTxStatus(tx.getTxStatus());
+                updateChainTransaction.setBlockNum(blockNumber);
+                updateChainTransaction.setBlockTime(blockTime);
+                chainTransactionService.updateById(updateChainTransaction);
+            }
         }
     }
 

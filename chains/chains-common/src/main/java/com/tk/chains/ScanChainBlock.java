@@ -184,17 +184,13 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
     /**
      * 扫描 ChainTransaction 表 并将交易上链
      */
-    @Scheduled(initialDelay = 5000, fixedRate = 5000)
+    @Scheduled(initialDelay = 30_000, fixedRate = 30_000)
     public void transactionToChain() {
         List<ChainScanConfig> chainScanConfigs = chainJobManager.getChainScanConfigs();
         for (ChainScanConfig chainScanConfig : chainScanConfigs) {
             List<WalletWithdraw> walletWithdraws = walletWithdrawService.lambdaQuery().eq(WalletWithdraw::getBaseSymbol, chainScanConfig.getChainId()).eq(WalletWithdraw::getStatus, 2).list();
             if (CollectionUtils.isNotEmpty(walletWithdraws)) {
                 for (WalletWithdraw walletWithdraw : walletWithdraws) {
-                    SymbolConfig config = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId())
-                            .eq(SymbolConfig::getContractAddress, "").last("limit 1").one();
-                    WalletSymbolConfig walletSymbolConfig = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getSymbolConfigId, config.getId())
-                            .eq(WalletSymbolConfig::getWalletId, walletWithdraw.getWalletId()).last("limit 1").one();
                     ChainTransaction chainTransaction = new ChainTransaction();
                     chainTransaction.setChainId(chainScanConfig.getChainId());
                     chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.INIT.name());
@@ -202,7 +198,6 @@ public class ScanChainBlock implements ApplicationContextAware, SmartLifecycle {
                     chainTransaction.setFromAddress(walletWithdraw.getAddressFrom());
                     chainTransaction.setToAddress(walletWithdraw.getAddressTo());
                     chainTransaction.setAmount(walletWithdraw.getAmount());
-                    chainTransaction.setGasAddress(walletSymbolConfig.getEnergyAddress());
                     SymbolConfig symbolConfig = symbolConfigService.lambdaQuery().eq(SymbolConfig::getBaseSymbol, chainScanConfig.getChainId()).eq(SymbolConfig::getSymbol, walletWithdraw.getSymbol()).one();
                     chainTransaction.setTokenSymbol(symbolConfig.getTokenSymbol());
                     chainTransaction.setSymbol(symbolConfig.getSymbol());

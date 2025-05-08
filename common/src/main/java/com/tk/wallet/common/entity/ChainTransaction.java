@@ -27,13 +27,13 @@ public class ChainTransaction implements CalcFingerprint<Long> {
     // 手续费支付地址
     private String gasAddress;
     // 交易手续费, 需要调用 com.chainup.wallet.api.chain.support.BlockChain.gas 方法，得到的结果保存到 gas 字段
-    private BigDecimal gas;
+    // private BigDecimal gas;
     // 实际手续费
-    private BigDecimal actGas;
+    // private BigDecimal actGas;
     //提币配置, 发起提现需要将 waas.coin_config的config_json 填充到这个字段
     private String gasConfig;
     // json格式，便于重试
-    private String chainInfo;
+    // private String chainInfo;
 
     private String fromAddress;
 
@@ -98,8 +98,10 @@ public class ChainTransaction implements CalcFingerprint<Long> {
 
     // private String memo;
 
+    // SEND_ERROR 推送到节点，网络异常
+    // 1、等待一段时间，判断是否有交易数据，根据链的不同，进行重试
     public enum TX_STATUS {
-        INIT, WAITING_HASH, WAIT_TO_CHAIN, PENDING, FAIL, SUCCESS
+        INIT, WAITING_HASH, WAIT_TO_CHAIN, PENDING, FAIL, SUCCESS, SEND_ERROR
     }
 
     public enum FAIL_CODE {

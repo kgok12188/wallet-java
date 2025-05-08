@@ -181,7 +181,7 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
                 coinBalance = coinBalance.subtract(gas);
                 AggTask aggTask = new AggTask();
                 // 手续费
-                aggTask.setGas(gas);
+                // aggTask.setGas(gas);
                 // 转账金额
                 aggTask.setAmount(tokenBalance.getBalance());
                 aggTask.setContractAddress(tokenBalance.getContractAddress());
@@ -200,7 +200,7 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
             firstAggTask.setContainCoin(containCoin ? 1 : 0);
             // 本身有足够的gas
             if (coinBalance.compareTo(BigDecimal.ZERO) >= 0) {
-                firstAggTask.setGas(BigDecimal.ZERO);
+                // firstAggTask.setGas(BigDecimal.ZERO);
                 firstAggTask.setAmount(BigDecimal.ZERO);
                 firstAggTask.setFromAddress(gasAddress);
                 firstAggTask.setToAddress(address);
@@ -210,7 +210,7 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
                 firstAggTask.setStatus(AggTask.STATUS_SUCCESS);
                 firstAggTask.setWalletId(walletId);
             } else {
-                firstAggTask.setGas(blockChain.gas(chainScanConfig, coinConfig));
+                // firstAggTask.setGas(blockChain.gas(chainScanConfig, coinConfig));
                 firstAggTask.setAmount(coinBalance.multiply(new BigDecimal("-1")));
                 firstAggTask.setFromAddress(gasAddress);
                 firstAggTask.setToAddress(address);
@@ -230,7 +230,7 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
             if (coinBalance.compareTo(BigDecimal.ZERO) > 0 && coinBalance.compareTo(gas) > 0 && filterMinimumAmount(coinBalanceEntity, walletId, blockChain, chainScanConfig)) {
                 AggTask firstAggTask = new AggTask();
                 firstAggTask.setWalletId(walletId);
-                firstAggTask.setGas(gas);
+                // firstAggTask.setGas(gas);
                 firstAggTask.setAmount(coinBalance.subtract(gas));
                 firstAggTask.setFromAddress(address);
                 firstAggTask.setToAddress(targetAddress);
@@ -403,7 +403,6 @@ public class AggTaskServiceImpl extends ServiceImpl<AggTaskMapper, AggTask> impl
                     ChainTransaction transaction = new ChainTransaction();
                     transaction.setChainId(chainScanConfig.getChainId());
                     transaction.setBusinessId(BUSINESS_ID_PRE + "-" + aggTask.getId());
-                    transaction.setGas(aggTask.getGas());
                     transaction.setFromAddress(aggTask.getFromAddress());
                     transaction.setToAddress(aggTask.getToAddress());
                     transaction.setContract(aggTask.getContractAddress());

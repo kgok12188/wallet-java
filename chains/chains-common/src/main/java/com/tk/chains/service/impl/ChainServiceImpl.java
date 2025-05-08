@@ -114,6 +114,8 @@ public class ChainServiceImpl implements ChainService {
             }
         }
         BlockChain<?> blockChain = applicationContext.getBean(chainTransaction.getChainId(), BlockChain.class);
+        String gasAddress = blockChain.feePayer(chainTransaction.getFromAddress());
+        chainTransaction.setGasAddress(gasAddress);
         blockChain.checkChainTransaction(chainTransaction);
         chainTransactionService.save(chainTransaction);
         return chainTransaction.getId();

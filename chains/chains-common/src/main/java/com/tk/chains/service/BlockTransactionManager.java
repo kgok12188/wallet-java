@@ -7,9 +7,11 @@ import com.tk.chains.event.TransactionEvent;
 import com.tk.chains.event.ConfirmEvent;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
+import com.tk.wallet.common.entity.ChainWithdraw;
 import com.tk.wallet.common.fingerprint.CalcFingerprintService;
 import com.tk.wallet.common.mapper.ChainTransactionMapper;
 import com.tk.wallet.common.service.ChainTransactionService;
+import com.tk.wallet.common.service.ChainWithdrawService;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.annotations.Param;
@@ -32,10 +34,11 @@ public class BlockTransactionManager {
 
     @Autowired
     protected EventManager eventManager;
+
     @Autowired
     private CalcFingerprintService calcFingerprintService;
-
-
+    @Autowired
+    private ChainWithdrawService chainWithdrawService;
 
     public boolean hasPendingChainTransaction(String chainId, @Param("blockNumber") BigInteger blockNumber) {
         List<Long> ids = chainTransactionMapper.queryPendingChainTransaction(chainId, blockNumber, 1);
@@ -51,6 +54,13 @@ public class BlockTransactionManager {
         if (emit && id != null && id > 0) {
             eventManager.emit(new TransactionEvent(chainId, chainTransactionService.getById(id), null));
         }
+        ChainWithdraw chainWithdraw = chainWithdrawService.lambdaQuery().eq(ChainWithdraw::getHash, hash).eq(ChainWithdraw::getChainId, chainId).last("limit 1").one();
+        if (chainWithdraw != null) {
+            ChainWithdraw update = new ChainWithdraw();
+            update.setId(chainWithdraw.getId());
+            update.setStatus(txStatus);
+            chainWithdrawService.updateById(update);
+        }
     }
 
     public void updateTxStatus(Long id, String txStatus, String failCode, String message, BigInteger transferBlockNumber, boolean emit) {
@@ -59,22 +69,6 @@ public class BlockTransactionManager {
             ChainTransaction chainTransaction = chainTransactionService.getById(id);
             eventManager.emit(new TransactionEvent(chainTransaction.getChainId(), chainTransaction, null));
         }
-    }
-
-    public ChainTransaction getBusinessTransaction(String chainId, String hash) {
-        List<ChainTransaction> transactions = chainTransactionService.lambdaQuery().eq(ChainTransaction::getHash, hash).eq(ChainTransaction::getChainId, chainId).list();
-        if (CollectionUtils.isNotEmpty(transactions)) {
-            for (ChainTransaction transaction : transactions) {
-                if (StringUtils.isNotBlank(transaction.getBusinessId())) {
-                    return transaction;
-                }
-            }
-        }
-        return null;
-    }
-
-    public List<ChainTransaction> getTransactionByStatus(String chainId, List<String> statusList) {
-        return chainTransactionService.lambdaQuery().in(ChainTransaction::getTxStatus, statusList).eq(ChainTransaction::getChainId, chainId).list();
     }
 
     public void updateHash(Long id, String hash, String chainInfo) {
@@ -102,21 +96,30 @@ public class BlockTransactionManager {
     }
 
     public boolean prepareTransfer(BigInteger transferBlockNumber, String url, BigInteger nonce, List<Long> ids) {
+        Integer rows = chainTransactionService.lambdaQuery().in(ChainTransaction::getId, ids).eq(ChainTransaction::getTxStatus, "INIT").count();
+        if (rows == null || !Objects.equals(rows, ids.size())) {
+            return false;
+        }
         String idsStr = StringUtils.join(ids, ",");
-        Integer rows = chainTransactionMapper.prepareTransferList(idsStr, transferBlockNumber, url, nonce);
-        return rows != null && Objects.equals(rows, ids.size());
+        chainTransactionMapper.prepareTransferList(idsStr, transferBlockNumber, url, nonce);
+        return true;
     }
 
+    /**
+     * 释放等待hash
+     *
+     * @param id
+     */
     public void releaseWaitingHash(Long id) {
         chainTransactionMapper.releaseWaitingHash(id);
     }
 
-    public void updateTooLongTimeGetHash(String chainId, Long resetToINITInterval) {
-        chainTransactionMapper.updateTooLongTimeGetHash(chainId, new Date(System.currentTimeMillis() - resetToINITInterval));
-    }
-
-    public List<ChainTransaction> getByHash(String hash) {
-        return chainTransactionMapper.getByHash(hash);
+    // 推送交易网络失败
+    public void networkError(ChainWithdraw chainWithdraw) {
+        ChainWithdraw update = new ChainWithdraw();
+        update.setId(chainWithdraw.getId());
+        update.setStatus(ChainTransaction.TX_STATUS.SEND_ERROR.name());
+        chainWithdrawService.updateById(update);
     }
 
     public void emit(Long id) {

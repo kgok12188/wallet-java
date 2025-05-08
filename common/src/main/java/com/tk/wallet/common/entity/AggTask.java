@@ -38,7 +38,7 @@ public class AggTask implements CalcFingerprint<Long> {
     private String toAddress; //
     private String contractAddress; // 合约地址
     // 需要补充的gas
-    private BigDecimal gas; // 需要补充的gas
+    // private BigDecimal gas; // 需要补充的gas
     // 主币有余额，补充差额gas
     private BigDecimal amount; // 金额
     private Integer type; // 任务类型 1 补充燃料 2 归集

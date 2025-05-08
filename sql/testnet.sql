@@ -91,3 +91,8 @@ values (16,'BSC', 'BEP20-USDT', 1, '0x01bc06b31e9bd4ca058cd4982a9241321c08a363',
 replace into symbol_config(id,base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
                            token_symbol,config_json)
 values (17,'SOL', 'SOL', 1, '', 1, now(), now(), 9, 'SOL','{"gas":0.0005}');
+
+
+replace into symbol_config(id,base_symbol, symbol, confirm_count, contract_address, status, ctime, mtime, symbol_precision,
+                           token_symbol,config_json)
+values (18,'SOL', 'SOL-USDT', 1, '7kMRdbsnUbpyrTPoJ13hVopnSotm9uC8bLpTUk4H9Qsk', 1, now(), now(), 9, 'USDT','{"gas":0.0005}');

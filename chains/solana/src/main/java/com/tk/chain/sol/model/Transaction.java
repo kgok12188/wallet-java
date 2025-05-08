@@ -5,7 +5,9 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 @Data
@@ -41,6 +43,7 @@ public class Transaction {
 
     private String feePayer;
 
+    private Map<String, Map<String, BigDecimal>> postBalances;
 
     @Data
     @Builder

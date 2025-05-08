@@ -8,6 +8,7 @@ import com.tk.chains.event.TransactionEvent;
 import com.tk.chains.exceptions.GasException;
 import com.tk.wallet.common.entity.ChainScanConfig;
 import com.tk.wallet.common.entity.ChainTransaction;
+import com.tk.wallet.common.entity.ChainWithdraw;
 import com.tk.wallet.common.entity.SymbolConfig;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -137,8 +138,9 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 }
             }
         }
-        List<ChainTransaction> chainTransactions = new ArrayList<>();
+        List<ScanResultTx> txList = new ArrayList<>();
         for (EthBlock.TransactionResult<EthBlock.TransactionObject> transactionResult : transactions) {
+            List<ChainTransaction> chainTransactions = new ArrayList<>();
             if (transactionResult.get() == null) {
                 continue;
             }
@@ -151,12 +153,9 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 List<ChainTransaction> chainTransactionList = chainTransactionsMap.get(transactionObject.getHash());
                 ChainTransaction chainTransaction = chainTransactionList.get(0);
                 log.debug("扫描到交易 ：blockNumber={},\thash={},\tfrom={},\tto={},\ttoken={},\tamount={}", blockNumber, transactionObject.getHash(), chainTransaction.getFromAddress(), chainTransaction.getToAddress(), transactionObject.getTo(), chainTransaction.getAmount());
-                if (addressChecker.owner(chainTransaction.getFromAddress(), chainTransaction.getToAddress())) { // 主动推送的交易，需要统计手续费
-                    Optional<TransactionReceipt> transactionReceipt = chainClient.getClient().ethGetTransactionReceipt(chainTransaction.getHash()).send().getTransactionReceipt();
-                    chainTransaction.setGas(new BigDecimal(transactionObject.getGasPrice().multiply(transactionObject.getGas())));
-                    chainTransaction.setGasAddress(transactionObject.getFrom().toLowerCase());
-                    updateStatusAndGas(transactionReceipt, chainTransaction);
-                }
+//                if (addressChecker.owner(chainTransaction.getFromAddress(), chainTransaction.getToAddress())) { // 主动推送的交易，需要统计手续费
+//                    chainTransaction.setGasAddress(transactionObject.getFrom().toLowerCase());
+//                }
                 chainTransactions.addAll(chainTransactionList);
             } else {
                 ChainTransaction chainTransaction;
@@ -170,9 +169,6 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                     log.debug("扫描到交易 ：blockNumber={},\thash={},\tfrom={},\tto={},contract={},\tamount={}", blockNumber, transactionObject.getHash(), chainTransaction.getFromAddress(), chainTransaction.getToAddress(), chainTransaction.getContract(), chainTransaction.getAmount());
                     chainTransaction.setBlockNum(blockNumber);
                     chainTransaction.setNeedConfirmNum(this.mainCoinConfig.getConfirmCount());
-                    Optional<TransactionReceipt> transactionReceipt = chainClient.getClient().ethGetTransactionReceipt(chainTransaction.getHash()).send().getTransactionReceipt();
-                    chainTransaction.setGas(new BigDecimal(transactionObject.getGasPrice().multiply(transactionObject.getGas())));
-                    updateStatusAndGas(transactionReceipt, chainTransaction);
                     if (chainTransaction.getTxStatus().equalsIgnoreCase(ChainTransaction.TX_STATUS.SUCCESS.name())) {
                         chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.PENDING.name());
                     }
@@ -180,9 +176,19 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                     chainTransactions.add(chainTransaction);
                 }
             }
+            if (CollectionUtils.isNotEmpty(chainTransactions)) {
+                String transferId = transactionObject.getFrom() + "-" + transactionObject.getNonce();
+                ScanResultTx scanResultTx = new ScanResultTx(transactionObject.getHash(), transferId, transactionObject.getFrom(), BigDecimal.ZERO, chainTransactions
+                        , chainTransactions.get(0).getTxStatus());
+                BigDecimal gas = new BigDecimal(transactionObject.getGasPrice().multiply(transactionObject.getGas()));
+                Optional<TransactionReceipt> transactionReceipt = chainClient.getClient().ethGetTransactionReceipt(transactionObject.getHash()).send().getTransactionReceipt();
+                updateStatusAndGas(transactionReceipt, scanResultTx);
+                txList.add(scanResultTx);
+            }
         }
-        return new ScanResult(transactions.size(), chainTransactions, blockNumber, blockTime);
+        return new ScanResult(txList.size(), txList, blockNumber, blockTime);
     }
+
 
     @Override
     public String blockHeight(ChainScanConfig chainScanConfig) {
@@ -196,23 +202,26 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
      * @param chainTransaction   交易
      */
     @SuppressWarnings("all")
-    private void updateStatusAndGas(Optional<TransactionReceipt> transactionReceipt, ChainTransaction chainTransaction) {
+    private void updateStatusAndGas(Optional<TransactionReceipt> transactionReceipt, ScanResultTx scanResultTx) {
         if (transactionReceipt.isPresent()) {
-            chainTransaction.setActGas(new BigDecimal(new BigInteger(transactionReceipt.get().getEffectiveGasPrice().substring(2), 16).multiply(transactionReceipt.get().getGasUsed())));
-            BigDecimal gas = Convert.fromWei(chainTransaction.getGas().toString(), getConvertUnit(this.mainCoinConfig.getSymbolPrecision(), getChainId()));
-            chainTransaction.setGas(gas);
-            BigDecimal actGas = Convert.fromWei(chainTransaction.getActGas().toString(), getConvertUnit(this.mainCoinConfig.getSymbolPrecision(), getChainId()));
-            chainTransaction.setActGas(actGas);
-            if (transactionReceipt.get().isStatusOK()) {
-                chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.SUCCESS.name());
-            } else {
-                chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
-                chainTransaction.setFailCode(ChainTransaction.FAIL_CODE.OUT_OF_GAS.name());
+            BigDecimal gasWei = new BigDecimal(new BigInteger(transactionReceipt.get().getEffectiveGasPrice().substring(2), 16).multiply(transactionReceipt.get().getGasUsed()));
+            BigDecimal gas = Convert.fromWei(gasWei.toString(), getConvertUnit(this.mainCoinConfig.getSymbolPrecision(), getChainId()));
+            scanResultTx.setGas(gas);
+            for (ChainTransaction chainTransaction : scanResultTx.getChainTransactions()) {
+                if (transactionReceipt.get().isStatusOK()) {
+                    chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.SUCCESS.name());
+                    chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
+                } else {
+                    chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+                    chainTransaction.setFailCode(ChainTransaction.FAIL_CODE.OUT_OF_GAS.name());
+                    chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
+                }
             }
-            chainTransaction.setNeedConfirmNum(mainCoinConfig.getConfirmCount());
         } else {
-            chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
-            chainTransaction.setFailCode(ChainTransaction.FAIL_CODE.CHAIN_NOT_FOUND.name());
+            for (ChainTransaction chainTransaction : scanResultTx.getChainTransactions()) {
+                chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+                chainTransaction.setFailCode(ChainTransaction.FAIL_CODE.CHAIN_NOT_FOUND.name());
+            }
         }
     }
 
@@ -245,7 +254,6 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 chainTransaction.setAmount(amount.divide(coinConfig.precision(), 16, RoundingMode.DOWN));
                 chainTransaction.setHash(transactionObject.getHash());
                 chainTransaction.setContract(transactionObject.getTo());
-                chainTransaction.setGasAddress(transactionObject.getFrom());
                 chainTransaction.setTokenSymbol(coinConfig.getTokenSymbol());
                 chainTransaction.setSymbol(coinConfig.getSymbol());
                 chainTransaction.setNonce(transactionObject.getNonce());
@@ -280,13 +288,8 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         chainTransaction.setBlockNum(transactionObject.getBlockNumber());
         chainTransaction.setCtime(new Date());
         chainTransaction.setContract("");
-        BigDecimal gas = new BigDecimal(transactionObject.getGasPrice().multiply(transactionObject.getGas()));
-        gas = gas.divide(coinConfig.precision(), 18, RoundingMode.DOWN);
-        chainTransaction.setGas(gas);
-        chainTransaction.setActGas(BigDecimal.ZERO);
         chainTransaction.setFromAddress(transactionObject.getFrom());
         chainTransaction.setToAddress(transactionObject.getTo());
-        chainTransaction.setGasAddress(transactionObject.getFrom());
         chainTransaction.setAmount(amount);
         chainTransaction.setTokenSymbol(mainCoinConfig.getTokenSymbol());
         chainTransaction.setSymbol(this.mainCoinConfig.getSymbol());
@@ -369,43 +372,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     @Override
     @SuppressWarnings("unchecked")
     public List<ChainTransaction> getChainTransaction(ChainScanConfig chainScanConfig, String hash, String excludeUrl) {
-        List<ChainTransaction> chainTransactions = new ArrayList<>();
-        ChainClient chainClient = getChainClient(null);
-        try {
-            Optional<Transaction> transactionOptional = chainClient.getClient().ethGetTransactionByHash(hash).send().getTransaction();
-            Optional<TransactionReceipt> transactionReceiptOptional = chainClient.getClient().ethGetTransactionReceipt(hash).send().getTransactionReceipt();
-            if (transactionOptional.isPresent() && transactionReceiptOptional.isPresent()) {
-                Transaction transaction = transactionOptional.get();
-                ChainTransaction chainTransaction = null;
-                if (configHashMap.containsKey(transaction.getTo().toLowerCase())) {
-                    EthFilter ethFilter = new EthFilter(DefaultBlockParameter.valueOf(transaction.getBlockNumber()), DefaultBlockParameter.valueOf(transaction.getBlockNumber()), Lists.newArrayList(transaction.getFrom()));
-                    ethFilter.addSingleTopic(topic);
-                    EthLog ethLog = chainClient.getClient().ethGetLogs(ethFilter).send();
-                    if (ethLog != null && ethLog.getLogs() != null) {
-                        for (EthLog.LogResult<EthLog.LogObject> logResult : ethLog.getLogs()) {
-                            chainTransaction = erc20LogResult(logResult, chainClient, transactionOptional.get().getBlockNumber(), chainScanConfig.getLastBlockTime());
-                            if (chainTransaction != null) {
-                                chainTransactions.add(chainTransaction);
-                            }
-                        }
-                    } else {
-                        chainTransaction = erc20Token(transaction, this.configHashMap.get(transaction.getTo().toLowerCase()));
-                    }
-                } else {
-                    chainTransaction = coin(transaction, this.mainCoinConfig);
-                }
-                if (chainTransaction != null) {
-                    chainTransaction.setGas(new BigDecimal(transaction.getGasPrice().multiply(transaction.getGas())));
-                    chainTransaction.setBlockNum(transaction.getBlockNumber());
-                    updateStatusAndGas(transactionReceiptOptional, chainTransaction);
-                    chainTransactions.add(chainTransaction);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("getChainTransaction = {}", hash, e);
-            markClientError(chainClient);
-        }
-        return chainTransactions;
+        return new LinkedList<>();
     }
 
     @Override
@@ -415,22 +382,31 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                 add(chainTransaction.getUrlCode());
             }
         });
-        Optional<TransactionReceipt> transactionReceiptOptional;
-        try {
-            transactionReceiptOptional = chainClient.getClient().ethGetTransactionReceipt(chainTransaction.getHash()).send().getTransactionReceipt();
-        } catch (Exception e) {
-            log.error("{}\tconfirmTransaction = {}", chainTransaction.getChainId(), chainTransaction.getHash(), e);
-            markClientError(chainClient);
-            return;
-        }
-        if (transactionReceiptOptional.isPresent() && transactionReceiptOptional.get().isStatusOK()) {
-            blockTransactionManager.updateTxStatus(chainTransaction.getChainId(), chainTransaction.getHash(), ChainTransaction.TX_STATUS.SUCCESS.name(), null, null, chainTransaction.getId(), true);
-        } else {
-            log.error("chain = {}\tconfirmTransaction = {},\tnot found", getChainId(), chainTransaction.getHash());
-            blockTransactionManager.updateTxStatus(chainTransaction.getChainId(), chainTransaction.getHash(), ChainTransaction.TX_STATUS.FAIL.name(), ChainTransaction.FAIL_CODE.CHAIN_NOT_FOUND.name(), null, chainTransaction.getId(), true);
+        if (StringUtils.equals(chainTransaction.getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name())) {
+            Optional<TransactionReceipt> transactionReceiptOptional;
+            try {
+                transactionReceiptOptional = chainClient.getClient().ethGetTransactionReceipt(chainTransaction.getHash()).send().getTransactionReceipt();
+            } catch (Exception e) {
+                log.error("{}\tconfirmTransaction = {}", chainTransaction.getChainId(), chainTransaction.getHash(), e);
+                markClientError(chainClient);
+                return;
+            }
+            if (transactionReceiptOptional.isPresent() && transactionReceiptOptional.get().isStatusOK()) {
+                blockTransactionManager.updateTxStatus(chainTransaction.getChainId(), chainTransaction.getHash(), ChainTransaction.TX_STATUS.SUCCESS.name(), null, null, chainTransaction.getId(), true);
+            } else {
+                log.error("chain = {}\tconfirmTransaction = {},\tnot found", getChainId(), chainTransaction.getHash());
+                blockTransactionManager.updateTxStatus(chainTransaction.getChainId(), chainTransaction.getHash(), ChainTransaction.TX_STATUS.FAIL.name(), ChainTransaction.FAIL_CODE.CHAIN_NOT_FOUND.name(), null, chainTransaction.getId(), true);
+            }
+            ChainWithdraw chainWithdraw = chainWithdrawService.lambdaQuery().eq(ChainWithdraw::getChainId, chainTransaction.getChainId())
+                    .eq(ChainWithdraw::getHash, chainTransaction.getHash()).last("limit 1").one();
+            if (chainWithdraw != null) {
+                ChainWithdraw update = new ChainWithdraw();
+                update.setId(chainWithdraw.getId());
+                update.setStatus(chainTransaction.getTxStatus());
+                chainWithdrawService.updateById(update);
+            }
         }
     }
-
 
     public String formatAddress(String address) {
         return this.isValidTronAddress(address) ? address.toLowerCase() : "";
@@ -493,7 +469,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
     @Override
     public BigDecimal getBalance(ChainScanConfig chainScanConfig, String address) {
         BigDecimal balanceOrigin = getBalanceOrigin(chainScanConfig, address, DefaultBlockParameterName.LATEST);
-        return balanceOrigin.divide(this.mainCoinConfig.precision());
+        return balanceOrigin.divide(this.mainCoinConfig.precision(), 16, RoundingMode.DOWN).stripTrailingZeros();
     }
 
     @Override
@@ -509,7 +485,7 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             return BigDecimal.ZERO;
         }
         BigDecimal erc20BalanceOrigin = getERC20BalanceOrigin(null, address, tokenAddress, DefaultBlockParameter.valueOf(blockNumber));
-        return erc20BalanceOrigin.divide(coinConfig.precision());
+        return erc20BalanceOrigin.divide(coinConfig.precision(), 16, RoundingMode.DOWN).stripTrailingZeros();
     }
 
     private BigDecimal getBalanceOrigin(ChainScanConfig chainScanConfig, String address, DefaultBlockParameter defaultBlockParameter) {
@@ -525,83 +501,82 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
         }
     }
 
-
-    // 推送重复交易
-    public void reTransfer(ChainScanConfig chainScanConfig, List<ChainTransaction> chainTransactions) {
-        for (ChainTransaction transaction : chainTransactions) {
-            ChainClient chainClient = getChainClient(new HashSet<String>() {
-                {
-                    if (StringUtils.isNotBlank(transaction.getUrlCode())) {
-                        add(transaction.getUrlCode());
-                    }
-                }
-            });
-            String hexValue = "";
-            if (StringUtils.isNotBlank(transaction.getChainInfo())) {
-                hexValue = JSON.parseObject(transaction.getChainInfo()).getString("hexValue");
-            }
-            if (StringUtils.isBlank(hexValue)) {
-                blockTransactionManager.updateTxStatus(transaction.getId(), ChainTransaction.TX_STATUS.FAIL.name(), null, "", chainScanConfig.getBlockHeight(), true);
-                return;
-            }
-
-            //发送交易
-            EthSendTransaction ethSendTransaction = null;
-            log.info("start_reTransfer_0 : id={},\tBusinessId={},\tchainInfo={}", transaction.getId(), transaction.getBusinessId(), transaction.getChainInfo());
-            try {
-                ethSendTransaction = chainClient.getClient().ethSendRawTransaction(hexValue).sendAsync().get();
-            } catch (Exception e) {
-                blockTransactionManager.releaseWaitingHash(transaction.getId());
-                log.error("3_ethSendRawTransaction : {}", transaction.getId(), e);
-                markClientError(chainClient);
-                return;
-            }
-            if (ethSendTransaction == null || ethSendTransaction.hasError()) {
-                String errorMessage = ethSendTransaction == null ? "" : ethSendTransaction.getError().getMessage();
-                if (StringUtils.equals("already known", errorMessage) || StringUtils.startsWith(errorMessage, "nonce too low: next nonce")) {
-                    List<ChainTransaction> list = chainTransactionService.lambdaQuery().eq(ChainTransaction::getNonce, transaction.getNonce()).eq(ChainTransaction::getChainId, transaction.getChainId()).eq(ChainTransaction::getFromAddress, transaction.getFromAddress()).ne(ChainTransaction::getId, transaction.getId()).list();
-
-                    long count = list.stream().filter(f -> StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name()) || (StringUtils.isNotBlank(f.getHash()) && StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name())) || (StringUtils.isNotBlank(f.getHash()) && StringUtils.isNotBlank(f.getFailCode()))).count();
-                    if (count > 0) {
-                        ChainTransaction update = new ChainTransaction();
-                        update.setId(transaction.getId());
-                        update.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
-                        update.setNonce(new BigInteger("0"));
-                        chainTransactionService.updateById(update);
-                        eventManager.emit(new TransactionEvent(chainScanConfig.getChainId(), transaction, null));
-                    } else {
-                        ChainTransaction update = new ChainTransaction();
-                        update.setId(transaction.getId());
-                        update.setTxStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
-                        chainTransactionService.updateById(update);
-                    }
-                } else if (StringUtils.startsWith(errorMessage, "transaction underpriced")) {
-                    ChainTransaction update = new ChainTransaction();
-                    update.setId(transaction.getId());
-                    update.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
-                    chainTransactionService.updateById(update);
-                    transaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
-                    eventManager.emit(new TransactionEvent(chainScanConfig.getChainId(), transaction, null));
-                } else {
-                    log.error("4_ethSendRawTransaction : {},\t{}", transaction.getId(), errorMessage);
-                    if (transaction.getErrorCount() < 5) {
-                        blockTransactionManager.releaseWaitingHash(transaction.getId());
-                    } else {
-                        blockTransactionManager.updateTxStatus(transaction.getId(), ChainTransaction.TX_STATUS.FAIL.name(), null, errorMessage, chainScanConfig.getBlockHeight(), true);
-                    }
-                    if (StringUtils.startsWith(errorMessage, "nonce too low: next nonce")) {
-                        ChainTransaction updateChainTransaction = new ChainTransaction();
-                        updateChainTransaction.setId(transaction.getId());
-                        updateChainTransaction.setMessage(errorMessage);
-                        chainTransactionService.updateById(updateChainTransaction);
-                    }
-                }
-            } else {
-                String hash = ethSendTransaction.getTransactionHash();
-                blockTransactionManager.updateHash(transaction.getId(), hash, transaction.getChainInfo());
-            }
-        }
-    }
+//    // 推送重复交易
+//    public void reTransfer(ChainScanConfig chainScanConfig, List<ChainTransaction> chainTransactions) {
+//        for (ChainTransaction transaction : chainTransactions) {
+//            ChainClient chainClient = getChainClient(new HashSet<String>() {
+//                {
+//                    if (StringUtils.isNotBlank(transaction.getUrlCode())) {
+//                        add(transaction.getUrlCode());
+//                    }
+//                }
+//            });
+//            String hexValue = "";
+//            if (StringUtils.isNotBlank(transaction.getChainInfo())) {
+//                hexValue = JSON.parseObject(transaction.getChainInfo()).getString("hexValue");
+//            }
+//            if (StringUtils.isBlank(hexValue)) {
+//                blockTransactionManager.updateTxStatus(transaction.getId(), ChainTransaction.TX_STATUS.FAIL.name(), null, "", chainScanConfig.getBlockHeight(), true);
+//                return;
+//            }
+//
+//            //发送交易
+//            EthSendTransaction ethSendTransaction = null;
+//            log.info("start_reTransfer_0 : id={},\tBusinessId={},\tchainInfo={}", transaction.getId(), transaction.getBusinessId(), transaction.getChainInfo());
+//            try {
+//                ethSendTransaction = chainClient.getClient().ethSendRawTransaction(hexValue).sendAsync().get();
+//            } catch (Exception e) {
+//                blockTransactionManager.releaseWaitingHash(transaction.getId());
+//                log.error("3_ethSendRawTransaction : {}", transaction.getId(), e);
+//                markClientError(chainClient);
+//                return;
+//            }
+//            if (ethSendTransaction == null || ethSendTransaction.hasError()) {
+//                String errorMessage = ethSendTransaction == null ? "" : ethSendTransaction.getError().getMessage();
+//                if (StringUtils.equals("already known", errorMessage) || StringUtils.startsWith(errorMessage, "nonce too low: next nonce")) {
+//                    List<ChainTransaction> list = chainTransactionService.lambdaQuery().eq(ChainTransaction::getNonce, transaction.getNonce()).eq(ChainTransaction::getChainId, transaction.getChainId()).eq(ChainTransaction::getFromAddress, transaction.getFromAddress()).ne(ChainTransaction::getId, transaction.getId()).list();
+//
+//                    long count = list.stream().filter(f -> StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.SUCCESS.name()) || (StringUtils.isNotBlank(f.getHash()) && StringUtils.equals(f.getTxStatus(), ChainTransaction.TX_STATUS.PENDING.name())) || (StringUtils.isNotBlank(f.getHash()) && StringUtils.isNotBlank(f.getFailCode()))).count();
+//                    if (count > 0) {
+//                        ChainTransaction update = new ChainTransaction();
+//                        update.setId(transaction.getId());
+//                        update.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+//                        update.setNonce(new BigInteger("0"));
+//                        chainTransactionService.updateById(update);
+//                        eventManager.emit(new TransactionEvent(chainScanConfig.getChainId(), transaction, null));
+//                    } else {
+//                        ChainTransaction update = new ChainTransaction();
+//                        update.setId(transaction.getId());
+//                        update.setTxStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
+//                        chainTransactionService.updateById(update);
+//                    }
+//                } else if (StringUtils.startsWith(errorMessage, "transaction underpriced")) {
+//                    ChainTransaction update = new ChainTransaction();
+//                    update.setId(transaction.getId());
+//                    update.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+//                    chainTransactionService.updateById(update);
+//                    transaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
+//                    eventManager.emit(new TransactionEvent(chainScanConfig.getChainId(), transaction, null));
+//                } else {
+//                    log.error("4_ethSendRawTransaction : {},\t{}", transaction.getId(), errorMessage);
+//                    if (transaction.getErrorCount() < 5) {
+//                        blockTransactionManager.releaseWaitingHash(transaction.getId());
+//                    } else {
+//                        blockTransactionManager.updateTxStatus(transaction.getId(), ChainTransaction.TX_STATUS.FAIL.name(), null, errorMessage, chainScanConfig.getBlockHeight(), true);
+//                    }
+//                    if (StringUtils.startsWith(errorMessage, "nonce too low: next nonce")) {
+//                        ChainTransaction updateChainTransaction = new ChainTransaction();
+//                        updateChainTransaction.setId(transaction.getId());
+//                        updateChainTransaction.setMessage(errorMessage);
+//                        chainTransactionService.updateById(updateChainTransaction);
+//                    }
+//                }
+//            } else {
+//                String hash = ethSendTransaction.getTransactionHash();
+//                blockTransactionManager.updateHash(transaction.getId(), hash, transaction.getChainInfo());
+//            }
+//        }
+//    }
 
     @Override
     public void transfer(ChainScanConfig chainScanConfig, List<ChainTransaction> chainTransactions) {
@@ -665,18 +640,34 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
             String strategy = gasConfig.getString("strategy");
             BigInteger limit = gasConfig.getBigInteger("limit");
             BigInteger transferPrice;
-            if (chainTransaction.getGas() != null && chainTransaction.getGas().compareTo(BigDecimal.ZERO) > 0) {
-                transferPrice = chainTransaction.getGas().multiply(mainCoinConfig.precision()).toBigInteger().divide(limit);
+            // 自定义报价,不参考旷工
+            if (StringUtils.startsWithIgnoreCase("fixed", strategy) && gasConfig.getString("gas") != null && gasConfig.getBigDecimal("gas").compareTo(BigDecimal.ZERO) > 0) {
+                BigInteger gas = gasConfig.getBigDecimal("gas").multiply(mainCoinConfig.precision()).toBigInteger();
+                transferPrice = gas.divide(limit);
+            } else if (StringUtils.startsWithIgnoreCase("fixed_higher", strategy) && gasConfig.getString("gas") != null //
+                    && gasConfig.getBigDecimal("gas").compareTo(BigDecimal.ZERO) > 0) {
+                BigInteger gas = gasConfig.getBigDecimal("gas").multiply(mainCoinConfig.precision()).toBigInteger();
+                // 配置的价格高于旷工价格，但是采用旷工报价
+                transferPrice = gas.divide(limit);
+                if (gasPrice == null) {
+                    try {
+                        gasPrice = chainClient.getClient().ethGasPrice().send().getGasPrice();
+                    } catch (Exception e) {
+                        markClientError(chainClient);
+                        return;
+                    }
+                }
+                if (transferPrice.compareTo(gasPrice) < 0) {
+                    gasLowerList.add(chainTransaction);
+                    continue;
+                }
+                // 按照旷工报价
+                transferPrice = gasPrice;
             } else {
-                // 自定义报价,不参考旷工
-                if (StringUtils.startsWithIgnoreCase("fixed", strategy) && chainTransaction.getGas() != null && chainTransaction.getGas().compareTo(BigDecimal.ZERO) > 0) {
-                    BigInteger gas = chainTransaction.getGas().multiply(mainCoinConfig.precision()).toBigInteger();
-                    transferPrice = gas.divide(limit);
-                } else if (StringUtils.startsWithIgnoreCase("fixed_higher", strategy) && chainTransaction.getGas() != null && chainTransaction.getGas().compareTo(BigDecimal.ZERO) > 0) {
-                    BigInteger gas = chainTransaction.getGas().multiply(mainCoinConfig.precision()).toBigInteger();
-                    // 配置的价格高于旷工价格，但是采用旷工报价
-                    transferPrice = gas.divide(limit);
-                    if (gasPrice == null) {
+                if (gasPrice == null) {
+                    if (gasConfig.containsKey("gasPrice")) {
+                        gasPrice = gasConfig.getBigInteger("gasPrice");
+                    } else {
                         try {
                             gasPrice = chainClient.getClient().ethGasPrice().send().getGasPrice();
                         } catch (Exception e) {
@@ -684,28 +675,9 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                             return;
                         }
                     }
-                    if (transferPrice.compareTo(gasPrice) < 0) {
-                        gasLowerList.add(chainTransaction);
-                        continue;
-                    }
-                    // 按照旷工报价
-                    transferPrice = gasPrice;
-                } else {
-                    if (gasPrice == null) {
-                        if (gasConfig.containsKey("gasPrice")) {
-                            gasPrice = gasConfig.getBigInteger("gasPrice");
-                        } else {
-                            try {
-                                gasPrice = chainClient.getClient().ethGasPrice().send().getGasPrice();
-                            } catch (Exception e) {
-                                markClientError(chainClient);
-                                return;
-                            }
-                        }
-                    }
-                    // 按照旷工报价
-                    transferPrice = gasPrice;
                 }
+                // 按照旷工报价
+                transferPrice = gasPrice;
             }
             BigInteger transferGas = transferPrice.multiply(limit);
             // erc-20 转账
@@ -796,20 +768,28 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
 
                     ChainTransaction updateChainTransaction = new ChainTransaction();
                     updateChainTransaction.setId(transaction.getId());
-                    updateChainTransaction.setChainInfo(chainInfo);
                     chainTransactionService.updateById(updateChainTransaction);
-
                     log.info("start_transfer_1 : id={},\tBusinessId={},\tchainInfo={}", transaction.getId(), transaction.getBusinessId(), chainInfo);
+                    ChainWithdraw chainWithdraw = new ChainWithdraw();
+                    chainWithdraw.setChainId(chainScanConfig.getChainId());
+                    chainWithdraw.setTransferId(transaction.getFromAddress() + "-" + transaction.getNonce());
+                    chainWithdraw.setIds(JSON.toJSONString(Lists.newArrayList(transaction.getId())));
+                    chainWithdraw.setInfo(chainInfo);
+                    chainWithdraw.setGasAddress(transaction.getFromAddress());
+                    chainWithdraw.setStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name()); // 等待上链
+                    chainWithdraw.setRowData(hexValue);
+                    chainWithdrawService.save(chainWithdraw);
                     //发送交易
                     EthSendTransaction ethSendTransaction = null;
                     try {
                         ethSendTransaction = chainClient.getClient().ethSendRawTransaction(hexValue).sendAsync().get();
                     } catch (Exception e) {
-                        blockTransactionManager.releaseWaitingHash(transaction.getId());
+                        blockTransactionManager.networkError(chainWithdraw); // 网络故障
                         log.error("1_ethSendRawTransaction : {},\t{},\t{}", transaction.getId(), transaction.getBusinessId(), chainClient.getUrl(), e);
                         markClientError(chainClient);
                         break;
                     }
+                    // 网络没有故障，直接返回失败
                     if (ethSendTransaction == null || ethSendTransaction.hasError()) {
                         log.error("2_ethSendRawTransaction : {},\t{}", transaction.getId() + ",\t" + transaction.getBusinessId(), ethSendTransaction == null ? "" : ethSendTransaction.getError().getMessage());
                         blockTransactionManager.releaseWaitingHash(transaction.getId());
@@ -817,6 +797,10 @@ public class LIkeETHBlockChain extends BlockChain<Web3j> {
                     }
                     String hash = ethSendTransaction.getTransactionHash();
                     log.info("end transfer : id={},\t{}\tBlockHeight={},\thash={}", transaction.getId(), transaction.getBusinessId(), chainScanConfig.getBlockHeight(), hash);
+                    ChainWithdraw updateChainWithdraw = new ChainWithdraw();
+                    updateChainWithdraw.setId(chainWithdraw.getId());
+                    updateChainWithdraw.setHash(hash);
+                    chainWithdrawService.updateById(updateChainWithdraw);
                     blockTransactionManager.updateHash(transaction.getId(), hash, chainInfo);
                 }
             }

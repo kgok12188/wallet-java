@@ -204,8 +204,9 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
         Response.BlockExtention block = chainClient.getClient().getBlock(blockNumber.longValue());
         List<Response.TransactionExtention> blockTransactions = block.getTransactionsList();
         long timestamp = block.getBlockHeader().getRawData().getTimestamp();
-        List<ChainTransaction> chainTransactions = new ArrayList<>();
+        List<ScanResultTx> txList = new ArrayList<>();
         for (Response.TransactionExtention transaction : blockTransactions) {
+            List<ChainTransaction> chainTransactions = new ArrayList<>();
             String hash = ApiWrapper.toHex(transaction.getTxid());
             Chain.Transaction.Contract contract = transaction.getTransaction().getRawData().getContract(0);
             ByteString value = contract.getParameter().getValue();
@@ -261,6 +262,7 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                     }
                 }
             }
+            BigDecimal actFee = BigDecimal.ZERO;
             if (chainTransaction != null) {
                 chainTransaction.setHash(hash);
                 chainTransaction.setTxStatus(txStatus);
@@ -270,8 +272,7 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                 chainTransaction.setUrlCode(chainClient.getUrl());
                 Response.TransactionInfo transactionInfo = chainClient.getClient().getTransactionInfoById(hash);
                 long fee = transactionInfo.getFee();
-                chainTransaction.setGasAddress(chainTransaction.getFromAddress());
-                chainTransaction.setActGas(new BigDecimal(fee).divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN));
+                actFee = new BigDecimal(fee).divide(mainCoinConfig.precision(), 16, RoundingMode.DOWN);
                 Chain.Transaction.Result.contractResult contractRet = transaction.getTransaction().getRet(0).getContractRet();
                 if (Chain.Transaction.Result.contractResult.SUCCESS != contractRet) {
                     chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.FAIL.name());
@@ -279,8 +280,11 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                 }
                 chainTransactions.add(chainTransaction);
             }
+            if (CollectionUtils.isNotEmpty(chainTransactions)) {
+                txList.add(new ScanResultTx(hash, null, chainTransactions.get(0).getFromAddress(), actFee, chainTransactions, chainTransaction.getTxStatus()));
+            }
         }
-        return new ScanResult(blockTransactions.size(), chainTransactions, blockNumber, new Date(timestamp));
+        return new ScanResult(txList.size(), txList, blockNumber, new Date(timestamp));
     }
 
     @Override
@@ -373,13 +377,10 @@ public class TronBlockChain extends BlockChain<TronBlockChain.TrxChainClient> {
                 chainTransaction.setUrlCode(chainClient.getUrl());
                 chainTransaction.setTxStatus(ChainTransaction.TX_STATUS.PENDING.name());
                 try {
-                    Response.TransactionInfo transactionInfo = chainClient.getClient().getTransactionInfoById(hash);
-                    long fee = transactionInfo.getFee();
-                    BigDecimal feeBig = new BigDecimal(fee);
-                    feeBig = feeBig.divide(mainCoinConfig.precision());
-                    chainTransaction.setGasAddress(chainTransaction.getFromAddress());
+                 //   Response.TransactionInfo transactionInfo = chainClient.getClient().getTransactionInfoById(hash);
+//                    long fee = transactionInfo.getFee();
+//                    BigDecimal feeBig = new BigDecimal(fee);
                     chainTransaction.setBlockNum(chainScanConfig.getBlockHeight());
-                    chainTransaction.setActGas(feeBig);
                 } catch (Exception e) {
                     log.info("查询交易能量消耗失败,需要继续查询：txId={}，error", hash, e);
                     throw new RuntimeException(e);

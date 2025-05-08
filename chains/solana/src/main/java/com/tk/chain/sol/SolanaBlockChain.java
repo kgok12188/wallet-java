@@ -6,10 +6,10 @@ import com.alibaba.fastjson.JSONObject;
 import com.tk.chain.sol.model.*;
 import com.tk.chains.BlockChain;
 import com.tk.chains.exceptions.ChainParamsError;
-import com.tk.wallet.common.entity.ChainScanConfig;
-import com.tk.wallet.common.entity.ChainTransaction;
-import com.tk.wallet.common.entity.CoinBalance;
-import com.tk.wallet.common.entity.SymbolConfig;
+import com.tk.chains.service.BlockTransactionManager;
+import com.tk.wallet.common.entity.*;
+import com.tk.wallet.common.service.WalletAddressService;
+import com.tk.wallet.common.service.WalletSymbolConfigService;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -23,8 +23,18 @@ import java.util.stream.Collectors;
 @Service("SOL")
 public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
 
+    private final BlockTransactionManager blockTransactionManager;
+    private final WalletAddressService walletAddressService;
+    private final WalletSymbolConfigService walletSymbolConfigService;
+
     private volatile Map<String, SymbolConfig> configHashMap = new HashMap<>();
 
+    public SolanaBlockChain(BlockTransactionManager blockTransactionManager, WalletAddressService walletAddressService, WalletSymbolConfigService walletSymbolConfigService) {
+        super();
+        this.blockTransactionManager = blockTransactionManager;
+        this.walletAddressService = walletAddressService;
+        this.walletSymbolConfigService = walletSymbolConfigService;
+    }
 
     @Override
     public void checkChainTransaction(ChainTransaction chainTransaction) throws ChainParamsError {
@@ -41,7 +51,10 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
             throw new ChainParamsError("gasConfig error : " + gasConfig);
         }
         if (StringUtils.isBlank(chainTransaction.getGasAddress())) {
-            throw new ChainParamsError("gasConfig error : " + gasConfig);
+            throw new ChainParamsError("gasConfig_gas_address is empty : " + gasConfig);
+        }
+        if (!addressChecker.owner(chainTransaction.getGasAddress(), chainId)) {
+            throw new ChainParamsError("gasConfig_gas_address is not owner : " + gasConfig);
         }
     }
 
@@ -50,22 +63,59 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
     }
 
     @Override
-    protected boolean mergeSave() {
-        return true;
-    }
-
-    @Override
     public ScanResult scan(ChainScanConfig chainScanConfig, BigInteger blockNumber, BlockChain<SolanaRpcClient>.ChainClient chainClient) {
         BlockTx block = chainClient.getClient().getBlockTx(blockNumber.longValue());
-        ArrayList<ChainTransaction> chainTransactions = new ArrayList<>();
+        List<ScanResultTx> txList = new ArrayList<>();
+        HashMap<String, CoinBalance> upsertCoinBalances = new HashMap<>();
         for (Transaction tx : block.getTxs()) {
+            List<ChainTransaction> chainTransactions = new ArrayList<>();
             for (Transaction.Action action : tx.getActions()) {
                 if (addressChecker.owner(action.getFromAddress(), action.getToAddress(), this.chainId, tx.getTxHash())) {
                     chainTransactions.addAll(parseChainTransaction(tx, chainClient, new Date(block.getBlockTime() * 1000)));
                 }
             }
+            if (CollectionUtils.isNotEmpty(chainTransactions)) {
+                txList.add(new ScanResultTx(tx.getTxHash(), null, tx.getFeePayer(), tx.getFee(), chainTransactions, chainTransactions.get(0).getTxStatus()));
+                for (Map.Entry<String, Map<String, BigDecimal>> kv : tx.getPostBalances().entrySet()) {
+                    String owner = kv.getKey();
+                    Map<String, BigDecimal> value = kv.getValue();
+                    if (addressChecker.owner(owner, this.chainId)) {
+                        for (Map.Entry<String, BigDecimal> mintAmount : value.entrySet()) {
+                            String contract = mintAmount.getKey();
+                            BigDecimal amount = mintAmount.getValue();
+                            SymbolConfig symbolConfig = null;
+                            if (StringUtils.isNotBlank(contract)) {
+                                if (!this.configHashMap.containsKey(contract)) {
+                                    symbolConfig = configHashMap.get(contract);
+                                }
+                            } else {
+                                symbolConfig = this.mainCoinConfig;
+                            }
+                            if (symbolConfig != null) {
+                                CoinBalance coinBalance = new CoinBalance();
+                                coinBalance.setChainId(getChainId());
+                                coinBalance.setCoin(symbolConfig.getTokenSymbol());
+                                coinBalance.setApiCoin(symbolConfig.getSymbol());
+                                coinBalance.setContractAddress(symbolConfig.getContractAddress());
+                                coinBalance.setAddress(owner);
+                                coinBalance.setBalance(amount);
+                                coinBalance.setBlockHeight(blockNumber);
+                                coinBalance.setBlockTime(new Date(block.getBlockTime() * 1000));
+                                coinBalance.setMtime(new Date());
+                                upsertCoinBalances.put(coinBalance.getAddress() + "^^^^" + coinBalance.getContractAddress(), coinBalance);
+                            }
+                        }
+                    }
+                }
+            }
         }
-        return new ScanResult(block.getTxs().size(), chainTransactions, blockNumber, new Date(block.getBlockTime() * 1000));
+
+        // 合并整个块后更新余额
+        for (Map.Entry<String, CoinBalance> kv : upsertCoinBalances.entrySet()) {
+            coinBalanceService.upsert(kv.getValue()); // 更新余额
+        }
+
+        return new ScanResult(txList.size(), txList, blockNumber, new Date(block.getBlockTime() * 1000));
     }
 
     private List<ChainTransaction> parseChainTransaction(Transaction transaction, BlockChain<SolanaRpcClient>.ChainClient chainClient, Date blockTime) {
@@ -78,16 +128,10 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
                         SymbolConfig symbolConfig = configHashMap.get(action.getContractAddress());
                         ChainTransaction chainTransaction = parseChainTransaction(transaction, chainClient, action, symbolConfig, blockTime);
                         chainTransaction.setContract(action.getContractAddress());
-                        if (i == 0) {
-                            chainTransaction.setActGas(transaction.getFee().divide(mainCoinConfig.precision(), mainCoinConfig.getSymbolPrecision(), RoundingMode.DOWN));
-                        }
                         chainTransactions.add(chainTransaction);
                     }
                 } else {
                     ChainTransaction chainTransaction = parseChainTransaction(transaction, chainClient, action, this.mainCoinConfig, blockTime);
-                    if (i == 0) {
-                        chainTransaction.setActGas(transaction.getFee().divide(mainCoinConfig.precision(), mainCoinConfig.getSymbolPrecision(), RoundingMode.DOWN));
-                    }
                     chainTransactions.add(chainTransaction);
                 }
             }
@@ -107,26 +151,13 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
         chainTransaction.setTxStatus(PaymentStatusEnum.CONFIRMED.getCode().equals(transaction.getStatus()) ? ChainTransaction.TX_STATUS.PENDING.name() : ChainTransaction.TX_STATUS.FAIL.name());
         chainTransaction.setFromAddress(action.getFromAddress());
         chainTransaction.setToAddress(action.getToAddress());
-        chainTransaction.setGasAddress(action.getFromAddress());
         chainTransaction.setAmount(amount.stripTrailingZeros());
         chainTransaction.setTokenSymbol(symbolConfig.getTokenSymbol());
+        chainTransaction.setContract(action.getContractAddress());
         chainTransaction.setSymbol(symbolConfig.getSymbol());
         chainTransaction.setBlockNum(BigInteger.valueOf(transaction.getBlockHeight()));
         chainTransaction.setNeedConfirmNum(this.mainCoinConfig.getConfirmCount());
         chainTransaction.setBlockTime(new Date(transaction.getBlockTime()));
-        if (StringUtils.isNotBlank(action.getToAddress())) {
-            CoinBalance coinBalance = new CoinBalance();
-            coinBalance.setChainId(getChainId());
-            coinBalance.setCoin(symbolConfig.getTokenSymbol());
-            coinBalance.setApiCoin(symbolConfig.getSymbol());
-            coinBalance.setContractAddress(StringUtils.isBlank(action.getContractAddress()) ? "" : action.getContractAddress());
-            coinBalance.setAddress(action.getToAddress());
-            coinBalance.setBalance(action.getFromPostBalance().divide(symbolConfig.precision(), symbolConfig.getSymbolPrecision(), RoundingMode.DOWN));
-            coinBalance.setBlockHeight(new BigInteger(String.valueOf(transaction.getBlockHeight())));
-            coinBalance.setBlockTime(blockTime);
-            coinBalance.setMtime(new Date());
-            coinBalanceService.upsert(coinBalance); // 更新余额
-        }
         return chainTransaction;
     }
 
@@ -239,36 +270,41 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
             String hash = ret.getString("hash");
             String rawTx = ret.getString("rawTx");
             if (StringUtils.isBlank(hash) || StringUtils.isBlank(rawTx)) {
-                log.info("requestParams = {}", JSON.toJSONString(requestParams));
-                throw new RuntimeException("广播交易失败：" + StringUtils.join(ids, ","));
+                log.error("requestParams = {}", JSON.toJSONString(requestParams));
+                throw new RuntimeException("签名失败：" + StringUtils.join(ids, ","));
             }
             log.info("广播交易{} ：{},\t{}", StringUtils.join(ids, ","), hash, rawTx);
             if (blockTransactionManager.prepareTransfer(chainScanConfig.getBlockNumber(), chainClient.getUrl(), BigInteger.ZERO, ids)) {
+                ChainWithdraw chainWithdraw = new ChainWithdraw();
+                chainWithdraw.setGasAddress(gasAddress);
+                chainWithdraw.setTransferId(hash);
+                chainWithdraw.setRowData(rawTx);
+                chainWithdraw.setIds(JSON.toJSONString(ids));
+                chainWithdraw.setChainId(chainScanConfig.getChainId());
+                chainWithdraw.setGas(BigDecimal.ZERO);
+                chainWithdraw.setStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
+                chainWithdraw.setHash(hash);
+                chainWithdrawService.save(chainWithdraw);
+                for (ChainTransaction transaction : okList) {
+                    ChainTransaction update = new ChainTransaction();
+                    update.setId(transaction.getId());
+                    update.setTxStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
+                    update.setHash(hash);
+                    chainTransactionService.updateById(update);
+                    blockTransactionManager.emit(transaction.getId());
+                }
                 try {
-                    for (ChainTransaction transaction : okList) {
-                        ChainTransaction update = new ChainTransaction();
-                        update.setId(transaction.getId());
-                        update.setTxStatus(ChainTransaction.TX_STATUS.WAIT_TO_CHAIN.name());
-                        update.setHash(hash);
-                        update.setChainInfo(rawTx);
-                        chainTransactionService.updateById(update);
-                        blockTransactionManager.emit(transaction.getId());
-                    }
                     chainClient.getClient().sendTransaction(rawTx);
-                } catch (Exception e) {
-                    log.error("广播交易失败：", e);
+                } catch (SolanaRpcClient.ResponseError responseError) {
+                    log.error("广播交易失败：", responseError);
                     for (Long id : ids) {
                         blockTransactionManager.releaseWaitingHash(id);
                     }
-                }
-            } else {
-                for (Long id : ids) {
-                    blockTransactionManager.releaseWaitingHash(id);
+                } catch (Exception e) {
+                    blockTransactionManager.networkError(chainWithdraw);
                 }
             }
         }
-
-
         log.info("amountLowerList : {},gasLowerList = \t{}", amountLowerList.stream().map(ChainTransaction::getId).collect(Collectors.toList()), gasLowerList.stream().map(ChainTransaction::getId).collect(Collectors.toList()));
     }
 
@@ -367,6 +403,15 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
     @Override
     public SymbolConfig getTokenConfig(String contractAddress) {
         return configHashMap.get(contractAddress.toLowerCase());
+    }
+
+    // 代支付gas
+    @Override
+    public String feePayer(String address) {
+        WalletAddress walletAddress = walletAddressService.lambdaQuery().eq(WalletAddress::getAddress, address).one();
+        Integer walletId = walletAddress.getWalletId();
+        WalletSymbolConfig walletSymbolConfig = walletSymbolConfigService.lambdaQuery().eq(WalletSymbolConfig::getWalletId, walletId).eq(WalletSymbolConfig::getSymbolConfigId, mainCoinConfig.getId()).one();
+        return walletSymbolConfig.getEnergyAddress();
     }
 
 }

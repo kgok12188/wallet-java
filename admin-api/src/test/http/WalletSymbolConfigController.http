@@ -14,11 +14,11 @@ Content-Type: application/json
 
 {
   "walletId": 1000,
-  "symbolConfigId": 16
+  "symbolConfigId": 18
 }
 
 
-### POST 设置bep20-usdt
+### POST sol
 POST localhost:19903/walletSymbolConfig/add
 Content-Type: application/json
 

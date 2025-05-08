@@ -22,6 +22,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
@@ -149,13 +150,12 @@ public class SolanaRpcClient {
         if (Objects.nonNull(Objects.requireNonNull(jsonRpcResponse.getBody()).getError())) {
             String errMsg = jsonRpcResponse.getBody().getError().toString();
             if (errMsg.contains("skip") || errMsg.contains("miss")) {
-                return BlockTx.builder().blockHash(height.toString()).blockHeight(height).txs(Lists.newArrayList()).build();
+                return BlockTx.builder().blockHash(height.toString()).blockTime(System.currentTimeMillis() / 1000).blockHeight(height).txs(Lists.newArrayList()).build();
             }
             throw new RuntimeException(errMsg);
         }
         SolanaConfirmedBlock result = jsonRpcResponse.getBody().getResult();
-        return BlockTx.builder().blockHash(result.getBlockhash()).blockHeight(height).blockTime(result.getBlockTime().longValue()).parentHash(result.getPreviousBlockhash()).txs(result.getTransactions().stream().map(tx ->
-                buildSolTx(tx.getMeta(), tx.getTransaction(), height, result.getBlockTime())).filter(tx -> !CollectionUtils.isEmpty(tx.getActions())).collect(Collectors.toList())).build();
+        return BlockTx.builder().blockHash(result.getBlockhash()).blockHeight(height).blockTime(result.getBlockTime().longValue()).parentHash(result.getPreviousBlockhash()).txs(result.getTransactions().stream().map(tx -> buildSolTx(tx.getMeta(), tx.getTransaction(), height, result.getBlockTime())).filter(tx -> !CollectionUtils.isEmpty(tx.getActions())).collect(Collectors.toList())).build();
     }
 
 
@@ -175,8 +175,7 @@ public class SolanaRpcClient {
         if (Objects.nonNull(Objects.requireNonNull(jsonRpcResponse.getBody()).getError())) {
             throw new RuntimeException(jsonRpcResponse.getBody().getError().toString());
         }
-        return buildSolTx(jsonRpcResponse.getBody().getResult().getMeta(), jsonRpcResponse.getBody().getResult().getTransaction(),
-                jsonRpcResponse.getBody().getResult().getSlot().longValue(), jsonRpcResponse.getBody().getResult().getBlockTime());
+        return buildSolTx(jsonRpcResponse.getBody().getResult().getMeta(), jsonRpcResponse.getBody().getResult().getTransaction(), jsonRpcResponse.getBody().getResult().getSlot().longValue(), jsonRpcResponse.getBody().getResult().getBlockTime());
     }
 
     @SneakyThrows
@@ -225,6 +224,17 @@ public class SolanaRpcClient {
 
         List<String> accountKeys = transaction.getMessage().getAccountKeys();
         ArrayList<Transaction.Action> actions = Lists.newArrayList();
+        Map<String, Map<String, BigDecimal>> balances = new HashMap<>();
+        for (int i = 0; i < accountKeys.size(); i++) {
+            BigDecimal balance = meta.getPostBalances().get(i);
+            String owner = accountKeys.get(i);
+            Map<String, BigDecimal> tokenBalances = balances.computeIfAbsent(owner, k -> new HashMap<>());
+            tokenBalances.put("", balance.divide(BigDecimal.TEN.pow(9), 16, RoundingMode.DOWN).stripTrailingZeros());
+        }
+        for (SolConfirmedTransaction.MetaModel.PostTokenBalancesModel postTokenBalance : meta.getPostTokenBalances()) {
+            Map<String, BigDecimal> tokenBalances = balances.computeIfAbsent(postTokenBalance.getOwner(), k -> new HashMap<>());
+            tokenBalances.put(postTokenBalance.getMint(), postTokenBalance.getUiTokenAmount().getUiAmount());
+        }
         for (SolConfirmedTransaction.TransactionModel.MessageModel.InstructionsModel instruction : instructions) {
             String programId = instruction.getProgramId(accountKeys);
             List<Integer> accounts = instruction.getAccounts();
@@ -312,11 +322,9 @@ public class SolanaRpcClient {
                 actions.add(actionBuilder.build());
             }
         }
-        return Transaction.builder().fee(meta.getFee().stripTrailingZeros()).blockHeight(blockHeight)
-                .feePayer(transaction.getMessage().getAccountKeys().get(0))
-                .status(paymentStatus.getCode()).txHash(hash)
-                .blockTime(blockTime.longValue())
-                .actions(actions).build();
+        return Transaction.builder().fee(meta.getFee().divide(BigDecimal.TEN.pow(9), 16, RoundingMode.DOWN).stripTrailingZeros())//
+                .blockHeight(blockHeight).postBalances(balances).feePayer(transaction.getMessage().getAccountKeys().get(0))//
+                .status(paymentStatus.getCode()).txHash(hash).blockTime(blockTime.longValue()).actions(actions).build();
     }
 
     public void sendTransaction(String rawTx) {
@@ -332,25 +340,23 @@ public class SolanaRpcClient {
             throw new IllegalArgumentException("响应失败");
         }
         if (responseEntity.getBody().containsKey("error")) {
-            throw new IllegalArgumentException(String.valueOf(responseEntity.getBody().get("error")));
+            logger.error("sendTransaction : {}", responseEntity.getBody());
+            throw new ResponseError(responseEntity.getBody().toJSONString());
         }
         logger.info("sendTransaction : {}", responseEntity.getBody());
     }
 
+    public static class ResponseError extends RuntimeException {
+        public ResponseError(String message) {
+            super(message);
+        }
+    }
+
     public enum SystemInstructionType {
-        InstructionCreateAccount,
-        InstructionAssign,
-        InstructionTransfer,
-        InstructionCreateAccountWithSeed,
-        InstructionAdvanceNonceAccount,
-        InstructionWithdrawNonceAccount,
-        InstructionInitializeNonceAccount,
-        InstructionAuthorizeNonceAccount,
-        InstructionAllocate,
-        InstructionAllocateWithSeed,
-        InstructionAssignWithSeed,
-        InstructionTransferWithSeed,
-        InstructionUpgradeNonceAccount,
+        InstructionCreateAccount, InstructionAssign, InstructionTransfer, InstructionCreateAccountWithSeed, //
+        InstructionAdvanceNonceAccount, InstructionWithdrawNonceAccount, InstructionInitializeNonceAccount,  //
+        InstructionAuthorizeNonceAccount, InstructionAllocate, InstructionAllocateWithSeed, InstructionAssignWithSeed,  //
+        InstructionTransferWithSeed, InstructionUpgradeNonceAccount,
     }
 
     @Data
@@ -378,27 +384,11 @@ public class SolanaRpcClient {
 
 
     public enum TokenInstructionType {
-        InstructionInitializeMint,
-        InstructionInitializeAccount,
-        InstructionInitializeMultisig,
-        InstructionTransfer,
-        InstructionApprove,
-        InstructionRevoke,
-        InstructionSetAuthority,
-        InstructionMintTo,
-        InstructionBurn,
-        InstructionCloseAccount,
-        InstructionFreezeAccount,
-        InstructionThawAccount,
-        InstructionTransferChecked,
-        InstructionApproveChecked,
-        InstructionMintToChecked,
-        InstructionBurnChecked,
-        InstructionInitializeAccount2,
-        InstructionSyncNative,
-        InstructionInitializeAccount3,
-        InstructionInitializeMultisig2,
-        InstructionInitializeMint2,
+        InstructionInitializeMint, InstructionInitializeAccount, InstructionInitializeMultisig, InstructionTransfer, //
+        InstructionApprove, InstructionRevoke, InstructionSetAuthority, InstructionMintTo, InstructionBurn, InstructionCloseAccount, //
+        InstructionFreezeAccount, InstructionThawAccount, InstructionTransferChecked, InstructionApproveChecked, InstructionMintToChecked, //
+        InstructionBurnChecked, InstructionInitializeAccount2, InstructionSyncNative, InstructionInitializeAccount3, //
+        InstructionInitializeMultisig2, InstructionInitializeMint2,
     }
 
     @Data
