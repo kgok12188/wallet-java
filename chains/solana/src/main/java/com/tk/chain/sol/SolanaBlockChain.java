@@ -157,7 +157,7 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
         chainTransaction.setSymbol(symbolConfig.getSymbol());
         chainTransaction.setBlockNum(BigInteger.valueOf(transaction.getBlockHeight()));
         chainTransaction.setNeedConfirmNum(this.mainCoinConfig.getConfirmCount());
-        chainTransaction.setBlockTime(new Date(transaction.getBlockTime()));
+        chainTransaction.setBlockTime(blockTime);
         return chainTransaction;
     }
 
@@ -168,7 +168,7 @@ public class SolanaBlockChain extends BlockChain<SolanaRpcClient> {
     }
 
     /**
-     * 无需分组
+     * 安装gasAddress 分组
      *
      * @param chainScanConfig
      * @param chainTransactions
